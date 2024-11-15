@@ -45,6 +45,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "fast-check": "^3.23.1",
     "prettier": "^3.3.3",
+    "typedoc": "^0.26.11",
     "typescript": "^5.6.3",
     "vite-tsconfig-paths": "^5.0.1",
     "vitest": "^2.1.3"
