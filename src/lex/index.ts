@@ -1,11 +1,13 @@
-import * as core from '@/core';
-import { $, Recursive, Rule } from '@/core';
-
+import { $ } from '@/pipe';
+import { Recursive } from '@/recursive';
+import { RuleResult } from '@/result';
+import { Rule, Skipped } from '@/rule';
 export type LexRule<O> = Rule<string, O>;
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-const split = (str: string) =>
+const split = (str: string): string[] =>
   Array.from(segmenter.segment(str), ({ segment }) => segment);
 
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function isSubarrayEqual<E>(a: E[], b: E[], pos: number) {
   // Ensure the subarray is within bounds
   if (pos < 0 || pos + b.length > a.length) {
@@ -18,86 +20,93 @@ function isSubarrayEqual<E>(a: E[], b: E[], pos: number) {
       return false;
     }
   }
-
   return true; // All elements match
 }
-export const exact = (...str: string[]): Rule<string, undefined> => {
+const exact = (...str: string[]): Rule<string, undefined> => {
   const expected = str.flatMap((s) => split(s));
-
-  return Rule((src) => (pos) => {
+  return (src) => (pos) => {
     if (isSubarrayEqual(src, expected, pos)) {
-      return core.RuleResult.accept(undefined)(pos + expected.length);
+      return RuleResult.accept(undefined)(pos + expected.length);
     } else
-      return core.RuleResult.reject(
+      return RuleResult.reject(
         `Expected ${expected.join('')} got ${src.slice(pos, pos + expected.length).join('')}`,
       )(pos);
-  });
+  };
 };
 
-export const skipWhile = (
-  pred: (el: string) => boolean,
-): Rule<string, undefined> =>
-  Rule((src) => (pos) => {
+const skipWhile =
+  (pred: (el: string) => boolean): Rule<string, undefined> =>
+  (src) =>
+  (pos): RuleResult<undefined> => {
     const loop = (pos: number): Recursive<number> => {
       if (pos < src.length && pred(src[pos])) {
-        return {
-          done: false,
-          continue: () => loop(pos + 1),
-        };
+        return Recursive.next(() => loop(pos + 1));
       } else {
-        return {
-          done: true,
-          result: pos,
-        };
+        return Recursive.result(pos);
       }
     };
-    return $(Recursive.run(loop(pos)))(core.RuleResult.accept(undefined)).$;
-  });
+    return $(Recursive.run(loop(pos)))(RuleResult.accept(undefined)).$;
+  };
 
-export const anyOf = (str: string): Rule<string, string> => {
+const anyOf = (str: string): Rule<string, string> => {
   const set = new Set(split(str));
-  return core.nextIf((el) => set.has(el));
+  return Rule.nextIf((el) => set.has(el));
 };
-export const noneOf = (str: string): Rule<string, string> => {
+const noneOf = (str: string): Rule<string, string> => {
   const set = new Set(split(str));
-  return core.nextIf((el) => !set.has(el));
+  return Rule.nextIf((el) => !set.has(el));
 };
 
-export const slice = <R>(rule: Rule<string, R>): Rule<string, string[]> =>
-  Rule((src) => (pos) => {
+const slice =
+  <R>(rule: Rule<string, R>): Rule<string, string[]> =>
+  (src) =>
+  (pos): RuleResult<string[]> => {
     const result = rule(src)(pos);
     switch (result.accepted) {
       case false:
         return result;
       case true:
-        return $(result)(core.RuleResult.map((_) => src.slice(pos, result.pos)))
-          .$;
+        return $(result)(RuleResult.map(() => src.slice(pos, result.pos))).$;
     }
-  });
+  };
 
-export const optional = <S, R>(rule: Rule<S, R>): Rule<S, R | undefined> =>
-  core.fork(rule, core.accept(undefined));
+const optional = <S, R>(rule: Rule<S, R>): Rule<S, R | undefined> =>
+  Rule.fork(rule, Rule.accept(undefined));
 
-export namespace LexCursor {}
-export const end: Rule<string, undefined> = core.end;
+const end: Rule<string, undefined> = Rule.end;
 
-export const run =
+const run =
   (text: string) =>
-  <O>(rule: LexRule<O>): core.RuleResult<O> =>
+  <O>(rule: LexRule<O>): RuleResult<O> =>
     rule(split(text))(0);
 
-export const createLexer = <T>(
+const create = <T>(
   collect: [Rule<string, T>, ...Rule<string, T>[]],
-  ignore?: core.Skipped<string>,
+  ignore?: Skipped<string>,
 ): Rule<string, T[]> => {
-  const whitespace = ignore?ignore:core.skip(core.accept(undefined))
-   
-  const token = $(core.fork(...collect))(core.moveOrFail).$;
+  const whitespace = ignore ? ignore : Rule.skip(Rule.accept(undefined));
+  const token = $(Rule.fork(...collect))(Rule.nonEmpty).$;
+
   return $(
-    core.chain(
+    Rule.chain(
       whitespace,
-      $(token)(core.collect({ sep: whitespace.rule })).$,
+      $(token)(Rule.collect({ sep: whitespace.rule })).$,
       whitespace,
     ),
-  )(core.map(([ts]) => ts)).$;
+  )(Rule.map(([ts]) => ts)).$;
 };
+const isWhitespace = Rule.skip(anyOf(` \t\n\r\v\f`));
+
+const Lex = {
+  isWhitespace,
+  create,
+  run,
+  end,
+  optional,
+  slice,
+  noneOf,
+  anyOf,
+  skipWhile,
+  exact,
+};
+export { Lex };

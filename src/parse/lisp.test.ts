@@ -1,22 +1,8 @@
-import {
-  $,
-  as,
-  chain,
-  collect,
-  fork,
-  lazy,
-  loop,
-  map,
-  nextAs,
-  nextIf,
-  Rule,
-  skip,
-  Take,
-} from '@/core';
-import { createLexer, exact, noneOf, run } from '@/lex';
+/* eslint-disable @typescript-eslint/no-namespace */
+import { Lex } from '@/lex';
+import { $ } from '@/pipe';
+import { Rule, Skipped, StepResult } from '@/rule';
 import { expect, test } from 'vitest';
-import { end } from '.';
-
 type GateKind = 'open' | 'close';
 type BraceKind = 'paren' | 'curly' | 'square';
 type Brace = {
@@ -66,21 +52,22 @@ const log =
 namespace tokenizer {
   const whitespaces = ` \t\n\r\v\f`;
   const space = $(
-    nextIf<string>((s) => {
+    Rule.nextIf<string>((s) => {
       const trimmed = s.trim();
       return trimmed == '' || trimmed == ',';
     }),
-  )(as(undefined))(log('space')).$;
+  )(Rule.as(undefined))(log('space')).$;
+
   namespace paren {
-    export const open: Rule<string, Token> = $(exact('('))(
-      as({
+    export const open: Rule<string, Token> = $(Lex.exact('('))(
+      Rule.as({
         type: 'brace',
         brace: 'paren',
         gate: 'open',
       } satisfies Brace),
     ).$;
-    export const close = $(exact(')'))(
-      as({
+    export const close = $(Lex.exact(')'))(
+      Rule.as({
         type: 'brace',
         brace: 'paren',
         gate: 'close',
@@ -88,15 +75,15 @@ namespace tokenizer {
     ).$;
   }
   namespace square {
-    export const open = $(exact('['))(
-      as({
+    export const open = $(Lex.exact('['))(
+      Rule.as({
         type: 'brace',
         brace: 'square',
         gate: 'open',
       } satisfies Brace),
     ).$;
-    export const close = $(exact(']'))(
-      as({
+    export const close = $(Lex.exact(']'))(
+      Rule.as({
         type: 'brace',
         brace: 'square',
         gate: 'close',
@@ -104,76 +91,64 @@ namespace tokenizer {
     ).$;
   }
   namespace curly {
-    export const open = $(exact('{'))(
-      as({
+    export const open = $(Lex.exact('{'))(
+      Rule.as({
         type: 'brace',
         brace: 'curly',
         gate: 'open',
       } satisfies Brace),
     ).$;
-    export const close = $(exact('}'))(
-      as({
+    export const close = $(Lex.exact('}'))(
+      Rule.as({
         type: 'brace',
         brace: 'curly',
         gate: 'close',
       } satisfies Brace),
     ).$;
   }
-  const quote: Rule<string, Token> = $(exact("'"))(
-    as({ type: 'quote' } satisfies Token),
+  const quote: Rule<string, Token> = $(Lex.exact("'"))(
+    Rule.as({ type: 'quote' } satisfies Token),
   ).$;
-  const backtick: Rule<string, Token> = $(exact('`'))(
-    as({ type: 'backtick' } satisfies Token),
+  const backtick: Rule<string, Token> = $(Lex.exact('`'))(
+    Rule.as({ type: 'backtick' } satisfies Token),
   ).$;
-  const pow: Rule<string, Token> = $(exact('^'))(
-    as({ type: 'pow' } satisfies Token),
+  const pow: Rule<string, Token> = $(Lex.exact('^'))(
+    Rule.as({ type: 'pow' } satisfies Token),
   ).$;
-  const at: Rule<string, Token> = $(exact('@'))(
-    as({ type: 'pow' } satisfies Token),
+  const at: Rule<string, Token> = $(Lex.exact('@'))(
+    Rule.as({ type: 'pow' } satisfies Token),
   ).$;
-  const tilde: Rule<string, Token> = $(exact('~'))(
-    as({ type: 'tilde' } satisfies Token),
+  const tilde: Rule<string, Token> = $(Lex.exact('~'))(
+    Rule.as({ type: 'tilde' } satisfies Token),
   ).$;
   const text: Rule<string, Token> = $(
-    chain(
-      skip(exact(`"`)),
-      $(fork(noneOf(`"`), $(exact(`\\"`))(as(`"`)).$))(collect())(
-        map((s) => s.join('')),
-      ).$,
-      skip(exact(`"`)),
+    Rule.chain(
+      Rule.skip(Lex.exact(`"`)),
+      $(Rule.fork(Lex.noneOf(`"`), $(Lex.exact(`\\"`))(Rule.as(`"`)).$))(
+        Rule.collect(),
+      )(Rule.map((s) => s.join(''))).$,
+      Rule.skip(Lex.exact(`"`)),
     ),
-  )(map(([value]) => ({ type: 'text', value }) satisfies Token)).$;
-  const spliceunquote: Rule<string, Token> = $(exact('~@'))(
-    as({ type: 'spliceunquote' } satisfies Token),
+  )(Rule.map(([value]) => ({ type: 'text', value }) satisfies Token)).$;
+  const spliceunquote: Rule<string, Token> = $(Lex.exact('~@'))(
+    Rule.as({ type: 'spliceunquote' } satisfies Token),
   ).$;
   const comment = log('comment')(
-    skip(exact(';'), $(noneOf('\n'))(as(undefined))(loop()).$).rule,
+    Rule.skip(
+      Lex.exact(';'),
+      $(Lex.noneOf('\n'))(Rule.as(undefined))(Rule.loop()).$,
+    ).rule,
   );
-  const ignore = $(fork(comment, space))(log('ignore'))(loop())(skip).$;
-  const elem: Rule<string, Token> = $(noneOf(`${whitespaces}[]{}(),'"\`;`))(
-    collect({ min: 1 }),
-  )(map((s) => s.join('')))(
-    map((value) => ({ type: 'elem', value }) satisfies Token),
+  const ignore = $(Rule.fork(comment, space))(log('ignore'))(Rule.loop())(
+    Rule.skip,
   ).$;
-  const token: Rule<string, Token> = log('token')(
-    fork(
-      paren.open,
-      paren.close,
-      curly.open,
-      curly.close,
-      square.open,
-      square.close,
-      quote,
-      backtick,
-      pow,
-      at,
-      tilde,
-      text,
-      spliceunquote,
-      elem,
-    ),
-  );
-  const lexer = createLexer(
+  const elem: Rule<string, Token> = $(Lex.noneOf(`${whitespaces}[]{}(),'"\`;`))(
+    Rule.collect({ min: 1 }),
+  )(Rule.map((s) => s.join('')))(
+    Rule.map((value) => ({ type: 'elem', value }) satisfies Token),
+  ).$;
+
+  const lexer = Lex.create(
     [
       paren.open,
       paren.close,
@@ -193,7 +168,7 @@ namespace tokenizer {
     ignore,
   );
   export function lex(str: string): Token[] {
-    const result = $(lexer)(run(str)).$;
+    const result = $(lexer)(Lex.run(str)).$;
     switch (result.accepted) {
       case true:
         return result.result;
@@ -224,75 +199,84 @@ type AST =
       fun: AST;
       args: AST[];
     };
+
 namespace parser {
-  const open = (brace: BraceKind) =>
-    skip(
-      nextIf<Token>(
+  const open = (brace: BraceKind): Skipped<Token> =>
+    Rule.skip(
+      Rule.nextIf<Token>(
         (el) => el.type == 'brace' && el.brace == brace && el.gate == 'open',
       ),
     );
-  const close = (brace: BraceKind) =>
-    skip(
-      nextIf<Token>(
+  const close = (brace: BraceKind): Skipped<Token> =>
+    Rule.skip(
+      Rule.nextIf<Token>(
         (el) => el.type == 'brace' && el.brace == brace && el.gate == 'close',
       ),
     );
   const elemexpr = $(
-    nextAs<Token, AST>((el: Token) => {
+    Rule.nextAs<Token, AST>((el: Token) => {
       switch (el.type) {
         case 'elem':
-          return { value: el };
+          return { accepted: true, value: el };
         default:
-          return { msg: `Expected elem, got ${el.type} instead` };
+          return {
+            accepted: false,
+            msg: `Expected elem, got ${el.type} instead`,
+          };
       }
     }),
   ).$;
-  const arrexpr: Rule<Token, AST> = lazy<Token, AST>(
+  const arrexpr: Rule<Token, AST> = Rule.lazy<Token, AST>(
     () =>
       $(
-        chain(
+        Rule.chain(
           //open
           open('square'),
           //items
-          $(expr)(collect()).$,
+          $(expr)(Rule.collect()).$,
           //close
           close('square'),
         ),
-      )(map(([items]) => ({ type: 'arr', items }) satisfies AST)).$,
+      )(Rule.map(([items]) => ({ type: 'arr', items }) satisfies AST)).$,
   );
-  const dictexpr: Rule<Token, AST> = lazy(
+  const dictexpr: Rule<Token, AST> = Rule.lazy(
     () =>
       $(
-        chain(
+        Rule.chain(
           // open
           open('curly'),
           //pairs
-          $(chain(expr, expr))(collect()).$,
+          $(Rule.chain(expr, expr))(Rule.collect()).$,
           // close
           close('curly'),
         ),
-      )(map(([pairs]) => ({ type: 'dict', pairs }) satisfies AST)).$,
+      )(Rule.map(([pairs]) => ({ type: 'dict', pairs }) satisfies AST)).$,
   );
-  const textexpr: Rule<Token, AST> = nextAs<Token, AST>(
-    (el): Take<AST> => (el.type == 'text' ? { value: el } : { msg: `Expected text token, got ${el.type}` }),
+  const textexpr: Rule<Token, AST> = Rule.nextAs<Token, AST>(
+    (el): StepResult<AST> =>
+      el.type == 'text'
+        ? { accepted: true, value: el }
+        : { accepted: false, msg: `Expected text token, got ${el.type}` },
   );
-  const sexpr: Rule<Token, AST> = lazy<Token, AST>(
+  const sexpr: Rule<Token, AST> = Rule.lazy<Token, AST>(
     () =>
       $(
-        chain(
+        Rule.chain(
           // open
           open('paren'),
           // function
           expr,
           // args
-          $(expr)(collect()).$,
+          $(expr)(Rule.collect()).$,
           //close
           close('paren'),
         ),
-      )(map(([fun, args]) => ({ type: 's', fun, args }) satisfies AST)).$,
+      )(Rule.map(([fun, args]) => ({ type: 's', fun, args }) satisfies AST)).$,
   );
-  const expr = fork(elemexpr, arrexpr, dictexpr, textexpr, sexpr);
-  export const parse = $(chain(expr, skip(end)))(map(([e]) => e)).$;
+  const expr = Rule.fork(elemexpr, arrexpr, dictexpr, textexpr, sexpr);
+  export const parse = $(Rule.chain(expr, Rule.skip(Rule.end)))(
+    Rule.map(([e]) => e),
+  ).$;
 }
 
 test('simple lisp parser', () => {

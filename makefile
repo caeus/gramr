@@ -15,6 +15,9 @@ docs: install lint
 build: install lint
 	npm run build
 
-publish: build docs
+test:
+	npx vitest run
+
+publish: test docs build
 	npm publish
  

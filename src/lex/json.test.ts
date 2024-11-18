@@ -1,103 +1,122 @@
-import {
-  $,
-  as,
-  chain,
-  fork,
-  lazy,
-  loop,
-  map,
-  nextIf,
-  path,
-  Rule,
-  RuleResult,
-  skip,
-} from '@/core';
+import * as Result from '@/result';
+
+import { $ } from '@/pipe';
+import { Rule } from '@/rule';
 import fc from 'fast-check';
 import { expect, suite, test } from 'vitest';
-import { anyOf, end, exact, LexRule, noneOf, optional, run, slice } from '.';
+import { Lex, LexRule } from '.';
 
+const exact = Lex.exact;
+// eslint-disable-next-line @typescript-eslint/no-namespace
 namespace rules {
-  export const $null = exact('null');
+  export const $null = Lex.exact('null');
   export const $bool = $(
-    fork(
-      $(exact('false'))(map((_) => false)).$,
-      $(exact('true'))(map((_) => true)).$,
+    Rule.fork(
+      //
+      $(Lex.exact('false'))(Rule.as(false)).$,
+      //
+      $(exact('true'))(Rule.as(true)).$,
     ),
-  )(path('bool')).$;
-  const digit = $(anyOf('0123456789'))(as(undefined))(path('digit')).$;
+  )(Rule.path('bool')).$;
+  const digit = $(Lex.anyOf('0123456789'))(Rule.as(undefined))(
+    Rule.path('digit'),
+  ).$;
 
-  const digits = $(digit)(loop({ min: 1 }))(path('digits')).$;
-  const sign = $(fork(exact('+'), exact('-')))(optional)(path('sign')).$;
+  const digits = $(digit)(Rule.loop({ min: 1 }))(Rule.path('digits')).$;
+  const sign = $(Rule.fork(exact('+'), exact('-')))(Lex.optional)(
+    Rule.path('sign'),
+  ).$;
 
   const exponent: LexRule<undefined> = $(
-    chain(fork(exact('e'), exact('E')) as LexRule<undefined>, sign, digits),
-  )(as(undefined))(path('exponent')).$;
-  const fractional = $(chain(exact('.'), digits))(map(() => undefined))(
-    path('fractional'),
-  ).$;
+    Rule.chain(
+      Rule.fork(exact('e'), exact('E')) as LexRule<undefined>,
+      sign,
+      digits,
+    ),
+  )(Rule.as(undefined))(Rule.path('exponent')).$;
+  const fractional = $(Rule.chain(exact('.'), digits))(
+    Rule.map(() => undefined),
+  )(Rule.path('fractional')).$;
   export const $integral = $(
-    fork(exact('0'), chain(anyOf('123456789'), $(digit)(loop()).$)),
-  )(path('integral')).$;
+    Rule.fork(
+      exact('0'),
+      Rule.chain(Lex.anyOf('123456789'), $(digit)(Rule.loop()).$),
+    ),
+  )(Rule.path('integral')).$;
   export const $number = $(
-    chain(sign, $integral, optional(fractional), optional(exponent)),
-  )(slice)(map((n) => JSON.parse(n.join('')) as number))(path('number')).$;
+    Rule.chain(
+      sign,
+      $integral,
+      Lex.optional(fractional),
+      Lex.optional(exponent),
+    ),
+  )(Lex.slice)(Rule.map((n) => JSON.parse(n.join('')) as number))(
+    Rule.path('number'),
+  ).$;
 
-  const unicodeEscape = chain(
+  const unicodeEscape = Rule.chain(
     exact('u'),
-    loop<string>({ min: 4, max: 4 })(
-      $(anyOf('abcdefABCDEF0123456789'))(as(undefined)).$,
+    Rule.loop<string>({ min: 4, max: 4 })(
+      $(Lex.anyOf('abcdefABCDEF0123456789'))(Rule.as(undefined)).$,
     ),
   );
 
-  const escape = chain(exact(`\\`), fork(unicodeEscape, anyOf(`"b\\/fnrt`)));
-  const $strChar = $(noneOf(`"\\`))(as(undefined)).$;
+  const escape = Rule.chain(
+    exact(`\\`),
+    Rule.fork(unicodeEscape, Lex.anyOf(`"b\\/fnrt`)),
+  );
+  const $strChar = $(Lex.noneOf(`"\\`))(Rule.as(undefined)).$;
   export const $string = $(
-    chain(
-      $(exact(`"`))(path('openquote')).$,
-      $(fork($strChar, escape))(as(undefined))(path('strchars'))(loop()).$,
-      $(exact(`"`))(path('closequotes')).$,
+    Rule.chain(
+      $(Lex.exact(`"`))(Rule.path('openquote')).$,
+      $(Rule.fork($strChar, escape))(Rule.as(undefined))(Rule.path('strchars'))(
+        Rule.loop(),
+      ).$,
+      $(exact(`"`))(Rule.path('closequotes')).$,
     ),
-  )(path('string')).$;
+  )(Rule.path('string')).$;
 
-  const space = $(nextIf<string>((el) => el.trim() == ''))(as(undefined))(
-    loop(),
-  )(skip).$;
+  const space = $(Rule.nextIf<string>((el) => el.trim() == ''))(
+    Rule.as(undefined),
+  )(Rule.loop())(Rule.skip).$;
 
   export const $array = $(
-    lazy(() =>
-      chain(
+    Rule.lazy(() =>
+      Rule.chain(
         exact(`[`),
-        $(chain(space, $json))(as(undefined))(
-          loop({
-            sep: as(undefined)(chain(space, exact(','))),
+        $(Rule.chain(space, $json))(Rule.as(undefined))(
+          Rule.loop({
+            sep: Rule.as(undefined)(Rule.chain(space, exact(','))),
           }),
         ).$,
         space,
         exact(`]`),
       ),
     ),
-  )(as(undefined)).$;
+  )(Rule.as(undefined)).$;
   export const $object = $(
-    lazy(() =>
-      chain(
+    Rule.lazy(() =>
+      Rule.chain(
         exact(`{`),
-        $(chain(space, $string, space, exact(':'), space, $json))(
-          as(undefined),
+        $(Rule.chain(space, $string, space, exact(':'), space, $json))(
+          Rule.as(undefined),
         )(
-          loop({
-            sep: as(undefined)(chain(space, exact(','))),
+          Rule.loop({
+            sep: Rule.as(undefined)(Rule.chain(space, exact(','))),
           }),
         ).$,
         space,
         exact(`}`),
       ),
     ),
-  )(as(undefined)).$;
+  )(Rule.as(undefined)).$;
   export const $json: Rule<string, undefined> = $(
-    lazy(() => fork($null, $bool, $number, $string, $array, $object)),
-  )(as(undefined)).$;
+    Rule.lazy(() => Rule.fork($null, $bool, $number, $string, $array, $object)),
+  )(Rule.as(undefined)).$;
 
-  export const json = $(chain(space, $json, space, end))(as(undefined)).$;
+  export const json = $(Rule.chain(space, $json, space, Rule.end))(
+    Rule.as(undefined),
+  ).$;
 }
 
 const {
@@ -123,7 +142,9 @@ const {
   ),
 }));
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 function loggingIfError<Fn extends Function>(fn: Fn): Fn {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function decorated(...args: any[]): any {
     try {
       return fn(...args);
@@ -141,8 +162,8 @@ test('numbers', () => {
     fc.property(
       numArb,
       loggingIfError((x: number) => {
-        $(rules.$number)(run(JSON.stringify(x)))(
-          loggingIfError((s: RuleResult<number>) =>
+        $(rules.$number)(Lex.run(JSON.stringify(x)))(
+          loggingIfError((s: Result.RuleResult<number>) =>
             expect(s.accepted).toBe(true),
           ),
         );
@@ -151,7 +172,7 @@ test('numbers', () => {
   );
 });
 test('null', () => {
-  $(rules.$null)(run('null'))((s) => expect(s.accepted).toBe(true));
+  $(rules.$null)(Lex.run('null'))((s) => expect(s.accepted).toBe(true));
 });
 
 test('done', () => {
@@ -226,19 +247,19 @@ test('done', () => {
     2,
   );
 
-  $(rules.$json)(run(sample))((s) => expect(s.accepted).toBe(true));
+  $(rules.$json)(Lex.run(sample))((s) => expect(s.accepted).toBe(true));
 });
 test('string', () => {
   fc.assert(
     fc.property(strArb, (str) => {
-      $(rules.$string)(run(JSON.stringify(str)))((s) =>
+      $(rules.$string)(Lex.run(JSON.stringify(str)))((s) =>
         expect(s.accepted).toBe(true),
       );
     }),
   );
 });
 test('string case', () => {
-  $(rules.$string)(run(JSON.stringify('zcag<20WJm')));
+  $(rules.$string)(Lex.run(JSON.stringify('zcag<20WJm')));
 });
 
 suite('json', () => {
@@ -247,8 +268,8 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(run(JSON.stringify(x)))(
-            loggingIfError((s: RuleResult<undefined>) =>
+          $(rules.json)(Lex.run(JSON.stringify(x)))(
+            loggingIfError((s: Result.RuleResult<undefined>) =>
               expect(s.accepted).toBe(true),
             ),
           );
@@ -262,8 +283,8 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(run(JSON.stringify(x, null, 2)))(
-            loggingIfError((s: RuleResult<undefined>) =>
+          $(rules.json)(Lex.run(JSON.stringify(x, null, 2)))(
+            loggingIfError((s: Result.RuleResult<undefined>) =>
               expect(s.accepted).toBe(true),
             ),
           );
@@ -276,8 +297,8 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(run(JSON.stringify(x, null, 2) + '^'))(
-            loggingIfError((s: RuleResult<undefined>) =>
+          $(rules.json)(Lex.run(JSON.stringify(x, null, 2) + '^'))(
+            loggingIfError((s: Result.RuleResult<undefined>) =>
               expect(s.accepted).toBe(false),
             ),
           );

@@ -1,42 +1,46 @@
-import { $, accept, chain, collect, fork, loop, map } from '@/core';
+/* eslint-disable @typescript-eslint/no-unused-expressions */
+import { $ } from '@/pipe';
+import { Rule } from '@/rule';
 import { expect, suite, test } from 'vitest';
-import { end, exact, run } from '.';
+import { Lex } from '.';
 
 suite('exact', () => {
   test('fails', () => {
-    $(exact('thisinput'))(run('thatinput'))((r) =>
+    $(Lex.exact('thisinput'))(Lex.run('thatinput'))((r) =>
       expect(r.accepted).toBe(false),
     ).$;
   });
   test('succeeds', () => {
-    $(exact('thisinput'))(run('thisinputandmore'))((r) =>
+    $(Lex.exact('thisinput'))(Lex.run('thisinputandmore'))((r) =>
       expect(r.accepted).toBe(true),
     ).$;
   });
 });
 suite('chain', () => {
   test('succeeds', () => {
-    $(chain(exact('ab'), exact('cd'), exact('ef')))(run('abcdefgh'))((r) => {
+    $(Rule.chain(Lex.exact('ab'), Lex.exact('cd'), Lex.exact('ef')))(
+      Lex.run('abcdefgh'),
+    )((r) => {
       expect(r.accepted).toBe(true);
       if (r.accepted) expect(r.result.length).toEqual(3);
     });
   });
   test('fails', () => {
-    $(chain(exact('ab'), exact('cd'), exact('ef')))(run('abdefgh'))((r) =>
-      expect(r.accepted).toBe(false),
-    );
+    $(Rule.chain(Lex.exact('ab'), Lex.exact('cd'), Lex.exact('ef')))(
+      Lex.run('abdefgh'),
+    )((r) => expect(r.accepted).toBe(false));
   });
 });
 
 suite('fork', () => {
   test('succeeds', () => {
     $(
-      fork(
-        $(exact('ab'))(map((_) => 0)).$,
-        $(exact('bc'))(map((_) => true)).$,
-        $(exact('cd'))(map((_) => 'hola')).$,
+      Rule.fork(
+        $(Lex.exact('ab'))(Rule.as(0)).$,
+        $(Lex.exact('bc'))(Rule.as(true)).$,
+        $(Lex.exact('cd'))(Rule.as('hola')).$,
       ),
-    )(run('cd'))((r) => {
+    )(Lex.run('cd'))((r) => {
       expect(r.accepted).toBe(true);
       if (r.accepted) {
         expect(r.result).toBe('hola');
@@ -47,12 +51,12 @@ suite('fork', () => {
 });
 suite('eoi', () => {
   test('succeeds', () => {
-    $(chain(exact('asd'), end))(run('asd'))((r) =>
+    $(Rule.chain(Lex.exact('asd'), Rule.end))(Lex.run('asd'))((r) =>
       expect(r.accepted).toBe(true),
     ).$;
   });
   test('fails', () => {
-    $(chain(exact('asd'), end))(run('asdd'))((r) =>
+    $(Rule.chain(Lex.exact('asd'), Rule.end))(Lex.run('asdd'))((r) =>
       expect(r.accepted).toBe(false),
     ).$;
   });
@@ -61,16 +65,18 @@ suite('collect', () => {
   suite('wrong options', () => {
     test('fails', () => {
       expect(() =>
-        loop({
+        Rule.loop({
           min: 10,
           max: 5,
-        })(accept(undefined)),
+        })(Rule.accept(undefined)),
       ).toThrowError();
     });
   });
   suite('separator', () => {
     test('stops', () => {
-      $(exact('a'))(collect({ sep: exact('*') }))(run('aaaaa'))((r) => {
+      $(Lex.exact('a'))(Rule.collect({ sep: Lex.exact('*') }))(
+        Lex.run('aaaaa'),
+      )((r) => {
         expect(r.accepted).toBe(true);
         if (r.accepted) {
           expect(r.result.length).toBe(1);
@@ -78,7 +84,9 @@ suite('collect', () => {
       });
     });
     test('continues', () => {
-      $(exact('a'))(collect({ sep: exact('*') }))(run('a*a*a*a*a'))((r) => {
+      $(Lex.exact('a'))(Rule.collect({ sep: Lex.exact('*') }))(
+        Lex.run('a*a*a*a*a'),
+      )((r) => {
         expect(r.accepted).toBe(true);
         if (r.accepted) {
           expect(r.result.length).toBe(5);
@@ -88,7 +96,7 @@ suite('collect', () => {
   });
   suite('defaults', () => {
     test('succeeds', () => {
-      $(exact('a'))(collect())(run('aaaaaabb'))((r) => {
+      $(Lex.exact('a'))(Rule.collect())(Lex.run('aaaaaabb'))((r) => {
         expect(r.accepted).toBe(true);
         if (r.accepted) {
           expect(r.result.length).toBe(6);
@@ -98,7 +106,7 @@ suite('collect', () => {
   });
   suite('min', () => {
     test('succeeds', () => {
-      $(exact('a'))(collect({ min: 6 }))(run('aaaaaabb'))((r) => {
+      $(Lex.exact('a'))(Rule.collect({ min: 6 }))(Lex.run('aaaaaabb'))((r) => {
         expect(r.accepted).toBe(true);
         if (r.accepted) {
           expect(r.result.length).toEqual(6);
@@ -106,7 +114,7 @@ suite('collect', () => {
       });
     });
     test('fails', () => {
-      $(exact('a'))(collect({ min: 7 }))(run('aaaaaabb'))((r) => {
+      $(Lex.exact('a'))(Rule.collect({ min: 7 }))(Lex.run('aaaaaabb'))((r) => {
         expect(r.accepted).toBe(false);
       });
     });
@@ -114,22 +122,26 @@ suite('collect', () => {
   suite('max', () => {
     suite('top', () => {
       test('succeeds', () => {
-        $(exact('a'))(collect({ max: 3 }))(run('aaaaaabb'))((r) => {
-          expect(r.accepted).toBe(true);
-          if (r.accepted) {
-            expect(r.result.length).toEqual(3);
-          }
-        });
+        $(Lex.exact('a'))(Rule.collect({ max: 3 }))(Lex.run('aaaaaabb'))(
+          (r) => {
+            expect(r.accepted).toBe(true);
+            if (r.accepted) {
+              expect(r.result.length).toEqual(3);
+            }
+          },
+        );
       });
     });
     suite('starve', () => {
       test('succeeds', () => {
-        $(exact('a'))(collect({ max: 20 }))(run('aaaaaabb'))((r) => {
-          expect(r.accepted).toBe(true);
-          if (r.accepted) {
-            expect(r.result.length).toEqual(6);
-          }
-        });
+        $(Lex.exact('a'))(Rule.collect({ max: 20 }))(Lex.run('aaaaaabb'))(
+          (r) => {
+            expect(r.accepted).toBe(true);
+            if (r.accepted) {
+              expect(r.result.length).toEqual(6);
+            }
+          },
+        );
       });
     });
   });

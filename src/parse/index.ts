@@ -1,5 +1,5 @@
-import * as core from '@/core';
-import { Rule } from '@/core';
+import { RuleResult } from '@/result';
+import { Rule } from '@/rule';
 
 export const token =
   <K, E>(type: (elem: E) => K) =>
@@ -7,12 +7,11 @@ export const token =
     Rule.unfinished<E, E>((src: E[]) => (pos: number) => {
       const el = src[pos];
       const ck = type(el);
-      const s = core.RuleResult.accept(el)(pos + 1);
       if (ck == k) {
-        return core.RuleResult.accept(el)(pos + 1);
+        return RuleResult.accept(el)(pos + 1);
       }
-      return core.RuleResult.reject(`Expected ${k}, got ${ck} instead`)(pos);
+      return RuleResult.reject(`Expected ${k}, got ${ck} instead`)(pos);
     });
 
-export namespace ParseCursor {}
-export const end = core.end;
+const end = Rule.end;
+export const Parse = { end, token };
