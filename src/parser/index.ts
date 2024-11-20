@@ -15,5 +15,17 @@ const match =
 type Parser<E, R> = Rule<E, R>;
 
 const end = Rule.end;
-const Parser = { end, match };
+const enclose =
+  <E>(prefix: Rule<E, unknown>, suffix: Rule<E, unknown>) =>
+  <R>(rule: Rule<E, R>): Rule<E, R> =>
+    Rule.first(
+      Rule.chain<E>()
+        //
+        .skip(prefix)
+        .push(rule)
+        //
+        .skip(suffix).done,
+    );
+
+const Parser = { end, match, enclose };
 export { Parser };

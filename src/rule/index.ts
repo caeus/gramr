@@ -15,7 +15,7 @@ const unfinished =
           `Cursor out of range (input size: ${src.length}, position: ${pos})`,
         )(pos);
 
-type Fork<S, Rules extends [...Rule<S, unknown>[]]> =
+type Fork<S, Rules extends readonly [...Rule<S, unknown>[]]> =
   // case head, tail
   Rules extends [Rule<S, infer Out>, ...infer Tail extends Rule<S, unknown>[]]
     ? Out | Fork<S, Tail>
@@ -23,6 +23,11 @@ type Fork<S, Rules extends [...Rule<S, unknown>[]]> =
       Rules extends []
       ? never
       : never;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ResultType<R extends Rule<any, unknown>> =
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  R extends Rule<infer _EE, infer RR> ? RR : never;
 
 const flatMap =
   <E, R0, R1>(next: (value: R0) => Rule<E, R1>) =>
@@ -96,7 +101,7 @@ const path =
 const accept =
   <T>(value: T) =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  <E>(src: E[]) =>
+  <E>(_src: E[]) =>
   (pos: number): RuleResult<T> => ({
     accepted: true,
     result: value,
@@ -130,7 +135,7 @@ const log =
 const reject =
   (msg: string) =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  <E, T>(src: E[]) =>
+  <E, T>(_src: E[]) =>
   (pos: number): RuleResult<T> => ({
     accepted: false,
     errors: [
@@ -328,25 +333,25 @@ const slice =
         return $(result)(RuleResult.map(() => src.slice(pos, result.pos))).$;
     }
   };
-type Concat<E, T extends readonly unknown[]> = {
-  push<R>(rule: Rule<E, R>): Concat<E, readonly [...T, R]>;
-  skip<R>(rule: Rule<E, R>): Concat<E, T>;
+type Chain<E, T extends readonly unknown[]> = {
+  push<R>(rule: Rule<E, R>): Chain<E, readonly [...T, R]>;
+  skip<R>(rule: Rule<E, R>): Chain<E, T>;
   done: Rule<E, T>;
 };
 
-function chain<E>(): Concat<E, readonly []>;
-function chain<E, T extends readonly unknown[]>(done: Rule<E, T>): Concat<E, T>;
+function chain<E>(): Chain<E, readonly []>;
+function chain<E, T extends readonly unknown[]>(done: Rule<E, T>): Chain<E, T>;
 function chain<E>(
   done: Rule<E, readonly unknown[]> = accept([]),
-): Concat<E, readonly unknown[]> {
+): Chain<E, readonly unknown[]> {
   return {
-    push: <R>(rule: Rule<E, R>): Concat<E, readonly [...unknown[], R]> =>
+    push: <R>(rule: Rule<E, R>): Chain<E, readonly [...unknown[], R]> =>
       chain(
         $(done)(
           flatMap((init) => $(rule)(map((last) => [...init, last] as const)).$),
         ).$,
       ),
-    skip: <R>(rule: Rule<E, R>): Concat<E, readonly unknown[]> =>
+    skip: <R>(rule: Rule<E, R>): Chain<E, readonly unknown[]> =>
       chain($(done)(flatMap((init) => $(rule)(as(init)).$)).$),
     done,
   };
@@ -373,4 +378,4 @@ const Rule = {
   slice,
   log,
 };
-export { Rule };
+export { Chain, Fork, ResultType, Rule };

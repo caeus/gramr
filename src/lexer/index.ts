@@ -1,7 +1,7 @@
 import { $ } from 'gramr-ts/pipe';
 import { Recursive } from 'gramr-ts/recursive';
 import { RuleResult } from 'gramr-ts/result';
-import { Rule } from 'gramr-ts/rule';
+import { Fork, Rule } from 'gramr-ts/rule';
 export type LexRule<O> = Rule<string, O>;
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const split = (str: string): string[] =>
@@ -69,10 +69,10 @@ const run =
   <O>(rule: LexRule<O>): RuleResult<O> =>
     rule(split(text))(0);
 
-const create = <T>(
-  collect: [Rule<string, T>, ...Rule<string, T>[]],
+const create = <H, Rules extends readonly [...Rule<string, unknown>[]]>(
+  collect: [Rule<string, H>, ...Rules],
   ignore?: Rule<string, unknown>,
-): Rule<string, T[]> => {
+): Rule<string, (H | Fork<string, Rules>)[]> => {
   const whitespace = ignore ? ignore : Rule.accept(undefined);
   const token = $(Rule.fork(...collect))(Rule.nonEmpty).$;
   return $(
@@ -81,10 +81,26 @@ const create = <T>(
       .push($(token)(Rule.collect({ sep: whitespace })).$).done,
   )(Rule.first).$;
 };
-const isWhitespace = anyOf(` \t\n\r\v\f`);
-
+/**
+ * Matches exactly one whitspace character
+ */
+const whitespace = anyOf(` \t\n\r\v\f`);
+const keyword = <Type extends string>(
+  type: Type,
+  display: string = type,
+): Rule<string, { type: Type }> => $(exact(display))(Rule.as({ type })).$;
+const delimiters = <Suffix extends string>(
+  suffix: Suffix,
+  open: string,
+  close: string,
+): [
+  Rule<string, { type: `open_${Suffix}` }>,
+  Rule<string, { type: `close_${Suffix}` }>,
+] => [keyword(`open_${suffix}`, open), keyword(`close_${suffix}`, close)];
 const Lexer = {
-  isWhitespace,
+  whitespace,
+  keyword,
+  delimiters,
   create,
   run,
   end,

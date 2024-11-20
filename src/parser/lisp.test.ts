@@ -1,42 +1,10 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 import { Lexer } from 'gramr-ts/lexer';
 import { $ } from 'gramr-ts/pipe';
-import { Rule, StepResult } from 'gramr-ts/rule';
+import { ResultType, Rule, StepResult } from 'gramr-ts/rule';
 import { expect, test } from 'vitest';
-type GateKind = 'open' | 'close';
+import { Parser } from '.';
 type BraceKind = 'paren' | 'curly' | 'square';
-type Brace = {
-  type: 'brace';
-  gate: GateKind;
-  brace: BraceKind;
-};
-type Token =
-  | Brace
-  | {
-      type: 'quote';
-    }
-  | {
-      type: 'backtick';
-    }
-  | {
-      type: 'pow';
-    }
-  | {
-      type: 'at';
-    }
-  | {
-      type: 'tilde';
-    }
-  | { type: 'spliceunquote' }
-  | {
-      type: 'text';
-      value: string;
-    }
-  | {
-      type: 'identifier';
-      value: string;
-    };
-
 const log =
   (id: string) =>
   <E, R>(rule: Rule<E, R>): Rule<E, R> =>
@@ -57,72 +25,32 @@ namespace tokenizer {
       return trimmed == '' || trimmed == ',';
     }),
   )(Rule.as(undefined))(log('space')).$;
+  const keyword = <Type extends string>(
+    type: Type,
+    dispay: string = type,
+  ): Rule<string, { type: Type }> =>
+    $(Lexer.exact(dispay))(Rule.as({ type })).$;
 
-  namespace paren {
-    export const open: Rule<string, Token> = $(Lexer.exact('('))(
-      Rule.as({
-        type: 'brace',
-        brace: 'paren',
-        gate: 'open',
-      } satisfies Brace),
-    ).$;
-    export const close = $(Lexer.exact(')'))(
-      Rule.as({
-        type: 'brace',
-        brace: 'paren',
-        gate: 'close',
-      } satisfies Brace),
-    ).$;
-  }
-  namespace square {
-    export const open = $(Lexer.exact('['))(
-      Rule.as({
-        type: 'brace',
-        brace: 'square',
-        gate: 'open',
-      } satisfies Brace),
-    ).$;
-    export const close = $(Lexer.exact(']'))(
-      Rule.as({
-        type: 'brace',
-        brace: 'square',
-        gate: 'close',
-      } satisfies Brace),
-    ).$;
-  }
-  namespace curly {
-    export const open = $(Lexer.exact('{'))(
-      Rule.as({
-        type: 'brace',
-        brace: 'curly',
-        gate: 'open',
-      } satisfies Brace),
-    ).$;
-    export const close = $(Lexer.exact('}'))(
-      Rule.as({
-        type: 'brace',
-        brace: 'curly',
-        gate: 'close',
-      } satisfies Brace),
-    ).$;
-  }
-  const quote: Rule<string, Token> = $(Lexer.exact("'"))(
-    Rule.as({ type: 'quote' } satisfies Token),
-  ).$;
-  const backtick: Rule<string, Token> = $(Lexer.exact('`'))(
-    Rule.as({ type: 'backtick' } satisfies Token),
-  ).$;
-  const pow: Rule<string, Token> = $(Lexer.exact('^'))(
-    Rule.as({ type: 'pow' } satisfies Token),
-  ).$;
-  const at: Rule<string, Token> = $(Lexer.exact('@'))(
-    Rule.as({ type: 'pow' } satisfies Token),
-  ).$;
-  const tilde: Rule<string, Token> = $(Lexer.exact('~'))(
-    Rule.as({ type: 'tilde' } satisfies Token),
-  ).$;
+  const braces = <Type extends string>(
+    suffix: Type,
+    open: string,
+    close: string,
+  ): [
+    Rule<string, { type: `open_${Type}` }>,
+    Rule<string, { type: `close_${Type}` }>,
+  ] => [keyword(`open_${suffix}`, open), keyword(`close_${suffix}`, close)];
 
-  const text: Rule<string, Token> = $(
+  const parens = braces('paren', '(', ')');
+  const curlys = braces('curly', '{', '}');
+  const squares = braces('square', '[', ']');
+
+  const quote = keyword('quote', `'`);
+  const backtick = keyword('backtick', `'`);
+  const pow = keyword('backtick', `^`);
+  const at = keyword('at', `@`);
+  const tilde = keyword('tilde', `~`);
+
+  const text = $(
     Rule.chain<string>()
       .skip(Lexer.exact(`"`))
       .push(
@@ -131,32 +59,25 @@ namespace tokenizer {
         )(Rule.map((s) => s.join(''))).$,
       )
       .skip(Lexer.exact(`"`)).done,
-  )(Rule.first)(
-    Rule.map((value) => ({ type: 'text', value }) satisfies Token),
-  ).$;
-  const spliceunquote: Rule<string, Token> = $(Lexer.exact('~@'))(
-    Rule.as({ type: 'spliceunquote' } satisfies Token),
-  ).$;
+  )(Rule.first)(Rule.map((value) => ({ type: 'text' as const, value }))).$;
+  const spliceunquote = keyword('spliceunquote', '~@');
   const comment = log('comment')(
     Rule.chain<string>()
       .skip(Lexer.exact(';'))
       .skip($(Lexer.noneOf(`\n`))(Rule.loop()).$).done,
   );
   const ignore = $(Rule.fork(comment, space))(log('ignore'))(Rule.loop()).$;
-  const identifier: Rule<string, Token> = $(
-    Lexer.noneOf(`${whitespaces}[]{}(),'"\`;`),
-  )(Rule.collect({ min: 1 }))(Rule.map((s) => s.join('')))(
-    Rule.map((value) => ({ type: 'identifier', value }) satisfies Token),
+  const identifier = $(Lexer.noneOf(`${whitespaces}[]{}(),'"\`;`))(
+    Rule.collect({ min: 1 }),
+  )(Rule.map((s) => s.join('')))(
+    Rule.map((value) => ({ type: 'identifier' as const, value })),
   ).$;
 
   const lexer = Lexer.create(
     [
-      paren.open,
-      paren.close,
-      curly.open,
-      curly.close,
-      square.open,
-      square.close,
+      ...parens,
+      ...curlys,
+      ...squares,
       quote,
       backtick,
       pow,
@@ -168,6 +89,7 @@ namespace tokenizer {
     ],
     ignore,
   );
+  export type Token = ResultType<typeof lexer>[number];
   export function lex(str: string): Token[] {
     const result = $(lexer)(Lexer.run(str)).$;
     switch (result.accepted) {
@@ -200,20 +122,17 @@ type AST =
       readonly fun: AST;
       readonly args: readonly AST[];
     };
-
+type Token = tokenizer.Token;
 namespace parser {
-  const open = (brace: BraceKind): Rule<Token, unknown> =>
-    Rule.nextIf<Token>(
-      (el) => el.type == 'brace' && el.brace == brace && el.gate == 'open',
-    );
-  const close = (brace: BraceKind): Rule<Token, unknown> =>
-    Rule.nextIf<Token>(
-      (el) => el.type == 'brace' && el.brace == brace && el.gate == 'close',
-    );
+  const delimiters = (
+    suffix: BraceKind,
+  ): [Rule<Token, unknown>, Rule<Token, unknown>] => [
+    Rule.nextIf((el) => el.type == (`open_${suffix}` as const)),
+    Rule.nextIf((el) => el.type == (`close_${suffix}` as const)),
+  ];
+
   const grouped = <T>(brace: BraceKind, rule: Rule<Token, T>): Rule<Token, T> =>
-    $(Rule.chain<Token>().skip(open(brace)).push(rule).skip(close(brace)).done)(
-      Rule.first,
-    ).$;
+    Parser.enclose(...delimiters(brace))(rule);
   const idexpr = $(
     Rule.nextAs<Token, AST>((el: Token) => {
       switch (el.type) {
