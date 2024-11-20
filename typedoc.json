@@ -1,5 +1,5 @@
 {
-  "entryPoints": ["src/parse/index.ts", "src/lex/index.ts"], // Replace with your main source file(s)
+  "entryPoints": ["src/**/*.ts"], // Replace with your main source file(s)
   "out": "docs", // Output directory for the documentation
   "name": "Gramr", // Project name
   "includeVersion": true, // Include package version in docs

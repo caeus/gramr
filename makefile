@@ -12,11 +12,14 @@ format: install
 docs: install lint
 	npm run docs
 
-build: install lint
+build: clean install lint test
 	npm run build
 
-test:
+test: lint
 	npx vitest run
+
+clean:
+	rm -rf dist
 
 publish: test docs build
 	npm publish
