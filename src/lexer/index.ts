@@ -1,14 +1,14 @@
 import { $ } from 'gramr-ts/pipe';
 import { Recursive } from 'gramr-ts/recursive';
 import { RuleResult } from 'gramr-ts/result';
-import { Fork, Rule } from 'gramr-ts/rule';
-export type LexRule<O> = Rule<string, O>;
+import { ResultOf, ResultsAsUnion, Rule } from 'gramr-ts/rule';
+export type LexRule<O> = Rule<O, string>;
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const split = (str: string): string[] =>
   Array.from(segmenter.segment(str), ({ segment }) => segment);
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-function isSubarrayEqual<E>(a: E[], b: E[], pos: number) {
+function isSubarrayEqual<E>(a: readonly E[], b: E[], pos: number) {
   // Ensure the subarray is within bounds
   if (pos < 0 || pos + b.length > a.length) {
     return false; // Out of bounds
@@ -27,7 +27,7 @@ function isSubarrayEqual<E>(a: E[], b: E[], pos: number) {
  * @param str
  * @returns A rule that accepts the stream only if it follows exactly with str
  */
-const exact = (...str: [string, ...string[]]): Rule<string, undefined> => {
+const exact = (...str: [string, ...string[]]): Rule<undefined, string> => {
   const expected = str.flatMap((s) => split(s));
   return (src) => (pos) => {
     if (isSubarrayEqual(src, expected, pos)) {
@@ -43,7 +43,7 @@ const exact = (...str: [string, ...string[]]): Rule<string, undefined> => {
  * @param rule
  * @returns A rule that returns the matched substring
  */
-const slice = (rule: Rule<string, unknown>): Rule<string, string> =>
+const slice = (rule: Rule<unknown, string>): Rule<string, string> =>
   $(rule)(Rule.slice)(Rule.map((ps) => ps.join(''))).$;
 /**
  *
@@ -51,7 +51,7 @@ const slice = (rule: Rule<string, unknown>): Rule<string, string> =>
  * @returns A rule that matches as many characters, as long as they pass predicated pred
  */
 const skipWhile =
-  (pred: (el: string) => boolean): Rule<string, undefined> =>
+  (pred: (el: string) => boolean): Rule<undefined, string> =>
   (src) =>
   (pos): RuleResult<undefined> => {
     const loop = (pos: number): Recursive<number> => {
@@ -86,12 +86,12 @@ const noneOf = (str: string): Rule<string, string> => {
  * @param rule
  * @returns A rule that may or may not match the original rule
  */
-const optional = <S, R>(rule: Rule<S, R>): Rule<S, R | undefined> =>
+const optional = <E, R>(rule: Rule<R, E>): Rule<R | undefined, E> =>
   Rule.fork(rule, Rule.accept(undefined));
 /**
  * Matches the end of the stream only
  */
-const end: Rule<string, undefined> = Rule.end;
+const end: Rule<undefined, string> = Rule.end;
 
 const run =
   (text: string) =>
@@ -112,20 +112,20 @@ const whitespace = anyOf(` \t\n\r\v\f`);
 const keyword = <Type extends string>(
   type: Type,
   display: string = type,
-): Rule<string, { type: Type }> => $(exact(display))(Rule.as({ type })).$;
+): Rule<{ type: Type }, string> => $(exact(display))(Rule.as({ type })).$;
 const delimiters = <Suffix extends string>(
   suffix: Suffix,
   open: string,
   close: string,
 ): [
-  Rule<string, { type: `open_${Suffix}` }>,
-  Rule<string, { type: `close_${Suffix}` }>,
+  Rule<{ type: `open_${Suffix}` }, string>,
+  Rule<{ type: `close_${Suffix}` }, string>,
 ] => [keyword(`open_${suffix}`, open), keyword(`close_${suffix}`, close)];
 
-const create = <H, Rules extends readonly [...Rule<string, unknown>[]]>(
-  collect: [Rule<string, H>, ...Rules],
-  ignore?: Rule<string, unknown>,
-): Rule<string, (H | Fork<string, Rules>)[]> => {
+const create = <H, Rules extends readonly [...Rule<unknown, string>[]]>(
+  collect: [Rule<H, string>, ...Rules],
+  ignore?: Rule<unknown, string>,
+): Rule<ResultsAsUnion<[Rule<H, string>, ...Rules]>[], string> => {
   const whitespace = ignore ? ignore : Rule.accept(undefined);
   const token = $(Rule.fork(...collect))(Rule.nonEmpty).$;
   return $(
@@ -135,9 +135,8 @@ const create = <H, Rules extends readonly [...Rule<string, unknown>[]]>(
       .skip(end).done,
   )(Rule.first).$;
 };
-type ResultOf<R extends Rule<string, unknown>> =
-  R extends Rule<string, infer Token> ? Token : never;
-type TokenOf<R extends Rule<string, unknown[]>> = ResultOf<R>[number];
+
+type TokenOf<R extends Rule<unknown[], string>> = ResultOf<R>[number];
 
 const Lexer = {
   whitespace,

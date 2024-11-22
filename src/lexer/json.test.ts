@@ -7,6 +7,7 @@ import { expect, suite, test } from 'vitest';
 import { Lexer, LexRule } from '.';
 
 const exact = Lexer.exact;
+
 // eslint-disable-next-line @typescript-eslint/no-namespace
 namespace rules {
   export const $null = Lexer.exact('null');
@@ -118,7 +119,7 @@ namespace rules {
           .skip(exact(`}`)).done,
     ),
   )(Rule.as(undefined)).$;
-  export const $json: Rule<string, undefined> = $(
+  export const $json: Rule<undefined, string> = $(
     Rule.lazy(() => Rule.fork($null, $bool, $number, $string, $array, $object)),
   )(Rule.as(undefined)).$;
 

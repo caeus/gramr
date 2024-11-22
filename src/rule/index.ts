@@ -3,7 +3,9 @@ import { $ } from 'gramr-ts/pipe';
 import { Recursive } from 'gramr-ts/recursive';
 import { RuleResult } from 'gramr-ts/result';
 
-type Rule<E, R> = (src: E[]) => (pos: number) => RuleResult<R>;
+type Rule<out R, in E = unknown> = (
+  src: readonly E[],
+) => (pos: number) => RuleResult<R>;
 /**
  * The unfinished function wraps an existing rule and ensures that it only operates on valid cursor positions within the input source.
  * If the cursor is out of range, the wrapped rule immediately fails with a rejection message.
@@ -12,8 +14,8 @@ type Rule<E, R> = (src: E[]) => (pos: number) => RuleResult<R>;
  * @returns
  */
 const unfinished =
-  <E, R>(rule: Rule<E, R>) =>
-  (src: E[]) =>
+  <R, E>(rule: Rule<R, E>) =>
+  (src: readonly E[]) =>
   (pos: number): RuleResult<R> =>
     pos >= 0 && pos < src.length
       ? rule(src)(pos)
@@ -21,19 +23,6 @@ const unfinished =
           `Cursor out of range (input size: ${src.length}, position: ${pos})`,
         )(pos);
 
-type Fork<S, Rules extends readonly [...Rule<S, unknown>[]]> =
-  // case head, tail
-  Rules extends [Rule<S, infer Out>, ...infer Tail extends Rule<S, unknown>[]]
-    ? Out | Fork<S, Tail>
-    : // case empty
-      Rules extends []
-      ? never
-      : never;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ResultType<R extends Rule<any, unknown>> =
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  R extends Rule<infer _EE, infer RR> ? RR : never;
 /**
  * The flatMap function is a combinator that allows chaining of parsing rules.
  * It transforms the result of one rule (rule0) and feeds it into a function (next) that produces another rule.
@@ -44,8 +33,8 @@ type ResultType<R extends Rule<any, unknown>> =
  * @returns A new rule that represents the composition of rule0 and the dynamically generated rule from next.
  */
 const flatMap =
-  <E, R0, R1>(next: (value: R0) => Rule<E, R1>) =>
-  (rule0: Rule<E, R0>): Rule<E, R1> =>
+  <R0, R1, E>(next: (value: R0) => Rule<R1, E>) =>
+  (rule0: Rule<R0, E>): Rule<R1, E> =>
   (src) =>
   (pos) => {
     const result0 = rule0(src)(pos);
@@ -81,28 +70,65 @@ function bestOf<T0, T1>(
       }
   }
 }
+
+type ElemOf<R extends Rule<unknown, never>> =
+  R extends Rule<unknown, infer E> ? E : never;
+type ResultOf<P extends Rule<unknown, never>> =
+  P extends Rule<infer R, never> ? R : never;
+type ResultsOf<R extends readonly Rule<unknown, never>[]> = R extends [
+  Rule<infer H, never>,
+  infer RT extends readonly Rule<unknown, never>[],
+]
+  ? readonly [H, ...ResultsOf<RT>]
+  : R extends readonly Rule<infer RR, never>[]
+    ? readonly RR[]
+    : R extends []
+      ? []
+      : never;
+type AsUnion<Os extends readonly unknown[]> = Os extends [
+  infer H,
+  ...infer T extends readonly unknown[],
+]
+  ? H | AsUnion<T>
+  : Os extends readonly (infer T)[]
+    ? T
+    : Os extends []
+      ? never
+      : unknown;
+type ResultsAsUnion<R extends readonly Rule<unknown, never>[]> = AsUnion<
+  ResultsOf<R>
+>;
 /**
  * The fork function combines multiple parsing rules into a single rule.
  * It evaluates all the provided rules at the same input position, and it selects the greediest result
  * based on most consumed input.
  * This allows for flexible parsing when multiple potential interpretations of the input are possible.
  * @param head First rule to be combined
- * @param rules Other rules to be combined
+ * @param tail Other rules to be combined
  * @returns
  */
-const fork =
-  <S, Head, Rules extends [...Rule<S, unknown>[]]>(
-    head: Rule<S, Head>,
-    ...rules: Rules
-  ): Rule<S, Head | Fork<S, Rules>> =>
-  (src: S[]) =>
-  (pos): RuleResult<Head | Fork<S, Rules>> => {
-    const results = [head, ...rules].map((rule) => rule(src)(pos));
-    const bestresult0 = results.reduce((greediest, current) =>
-      bestOf(greediest, current),
-    );
-    return bestresult0 as RuleResult<Head | Fork<S, Rules>>;
-  };
+
+const fork = <
+  H extends Rule<unknown, never>,
+  T extends readonly [...Rule<unknown, ElemOf<H>>[]],
+>(
+  head: H,
+  ...tail: T
+): Rule<ResultsAsUnion<[H, ...T]>, ElemOf<H>> => {
+  return (src: readonly ElemOf<H>[]) =>
+    (pos): RuleResult<ResultsAsUnion<[H, ...T]>> => {
+      const rules: Rule<unknown, ElemOf<H>>[] = [
+        head as unknown as Rule<unknown, ElemOf<H>>,
+        ...tail,
+      ];
+      const results = rules.map((rule) => rule(src)(pos));
+      const bestresult0 = results.reduce((greediest, current) =>
+        bestOf(greediest, current),
+      );
+      return bestresult0 as RuleResult<ResultsAsUnion<[H, ...T]>>;
+    };
+};
+const version: 4 = 4 as const;
 
 /**
  * The lazy function creates a Rule that defers the evaluation of a given rule until it is needed.
@@ -111,8 +137,8 @@ const fork =
  * @param expr
  * @returns A rule that is lazily evaluated
  */
-const lazy = <E, Out>(rule: () => Rule<E, Out>): Rule<E, Out> => {
-  let memo: Rule<E, Out> | null = null;
+const lazy = <E, Out>(rule: () => Rule<Out, E>): Rule<Out, E> => {
+  let memo: Rule<Out, E> | null = null;
   return (src) =>
     (pos): RuleResult<Out> => {
       if (memo == null) {
@@ -134,7 +160,7 @@ const lazy = <E, Out>(rule: () => Rule<E, Out>): Rule<E, Out> => {
  */
 const path =
   (id: string) =>
-  <S, O>(rule: Rule<S, O>): Rule<S, O> =>
+  <S, O>(rule: Rule<O, S>): Rule<O, S> =>
   (src) =>
   (pos) =>
     Context.inPath(id, () => rule(src)(pos));
@@ -146,7 +172,7 @@ const path =
 const accept =
   <T>(value: T) =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  <E>(src: E[]) =>
+  <E>(src: readonly E[]) =>
   (pos: number): RuleResult<T> => ({
     accepted: true,
     result: value,
@@ -162,7 +188,7 @@ const accept =
  * @returns A rule that prints in console when a rule is being attempted, and whether it matched or not
  */
 const log =
-  <E, R>(rule: Rule<E, R>): Rule<E, R> =>
+  <E, R>(rule: Rule<R, E>): Rule<R, E> =>
   (src) =>
   (pos) => {
     console.group();
@@ -215,7 +241,7 @@ const reject =
  * @param rule A rule that returns a non empty tuple
  * @returns
  */
-const first = <E, F>(rule: Rule<E, readonly [F, ...unknown[]]>): Rule<E, F> =>
+const first = <F, E>(rule: Rule<readonly [F, ...unknown[]], E>): Rule<F, E> =>
   $(rule)(map(([f]) => f)).$;
 /**
  * The end function is a parser combinator that checks if the current position corresponds to the end of the input.
@@ -226,7 +252,7 @@ const first = <E, F>(rule: Rule<E, readonly [F, ...unknown[]]>): Rule<E, F> =>
  * @returns
  */
 const end =
-  <E>(src: E[]) =>
+  <E>(src: readonly E[]) =>
   (pos: number): RuleResult<undefined> =>
     pos == src.length
       ? {
@@ -239,11 +265,11 @@ const end =
  * The map function transforms the output of an existing parser.
  * It takes a rule, applies it to input, and then modifies the parsed result using the provided transformation function (fn).
  * @param fn
- * @returns A new rule of type Rule<E, O>, which produces the transformed output
+ * @returns A new rule of type Rule<O, E>, which produces the transformed output
  */
 const map =
   <I, O>(fn: (i: I) => O) =>
-  <E>(rule: Rule<E, I>): Rule<E, O> =>
+  <E>(rule: Rule<I, E>): Rule<O, E> =>
   (src) =>
   (pos) =>
     $(rule(src)(pos))(RuleResult.map(fn)).$;
@@ -256,7 +282,7 @@ const map =
  */
 const as =
   <T>(value: T) =>
-  <E, R>(rule: Rule<E, R>): Rule<E, T> =>
+  <E, R>(rule: Rule<R, E>): Rule<T, E> =>
     map(() => value)(rule);
 /**
  *
@@ -288,7 +314,7 @@ export type StepResult<R> =
  * @param fn
  * @returns
  */
-const nextAs = <E, R>(fn: (el: E) => StepResult<R>): Rule<E, R> =>
+const nextAs = <E, R>(fn: (el: E) => StepResult<R>): Rule<R, E> =>
   unfinished((src) => (pos) => {
     const result = fn(src[pos]!);
     if (result.accepted) {
@@ -315,7 +341,7 @@ type RepOptions<S> = {
    * This is useful for handling cases where repetitions are separated by a specific token or pattern
    * (like commas between list items).
    */
-  sep?: Rule<S, unknown>;
+  sep?: Rule<unknown, S>;
 };
 /**
  * The repeat function is a parser combinator that allows for repeating a rule a specific number of times,
@@ -329,8 +355,8 @@ type RepOptions<S> = {
  */
 const repeat =
   <S>(options?: RepOptions<S>) =>
-  <E>(rule: Rule<S, E>) =>
-  <R>(init: () => R, fold: (el: E, result: R) => R): Rule<S, R> => {
+  <E>(rule: Rule<E, S>) =>
+  <R>(init: () => R, fold: (el: E, result: R) => R): Rule<R, S> => {
     const max = options?.max;
     const min = options?.min ?? 0;
     const sep = options?.sep ?? accept(undefined);
@@ -341,11 +367,11 @@ const repeat =
       throw 'Max must be greater or equal to Min';
     }
     const loop = (
-      src: S[],
+      src: readonly S[],
       pos: number,
       count: number,
-      use: Rule<S, E>,
-      next: Rule<S, E>,
+      use: Rule<E, S>,
+      next: Rule<E, S>,
       result: R,
     ): Recursive<RuleResult<R>> => {
       if (count < min) {
@@ -423,7 +449,7 @@ const repeat =
  */
 const loop =
   <S>(options?: RepOptions<S>) =>
-  (rule: Rule<S, unknown>): Rule<S, undefined> =>
+  (rule: Rule<unknown, S>): Rule<undefined, S> =>
     repeat(options)(rule)(
       () => undefined,
       () => undefined,
@@ -435,9 +461,9 @@ const loop =
  * @returns
  */
 const collect =
-  <S>(options?: RepOptions<S>) =>
-  <E>(rule: Rule<S, E>): Rule<S, E[]> =>
-    repeat(options)(rule)<E[]>(
+  <E>(options?: RepOptions<E>) =>
+  <I>(rule: Rule<I, E>): Rule<I[], E> =>
+    repeat(options)(rule)<I[]>(
       () => [],
       (el, r) => (r.push(el), r),
     );
@@ -449,7 +475,7 @@ const collect =
  * @returns
  */
 const nonEmpty =
-  <E, T>(rule: Rule<E, T>): Rule<E, T> =>
+  <E, T>(rule: Rule<T, E>): Rule<T, E> =>
   (src) =>
   (pos) => {
     const result = rule(src)(pos);
@@ -467,7 +493,7 @@ const nonEmpty =
  * @returns
  */
 const slice =
-  <R>(rule: Rule<string, R>): Rule<string, string[]> =>
+  <R>(rule: Rule<R, string>): Rule<string[], string> =>
   (src) =>
   (pos): RuleResult<string[]> => {
     const result = rule(src)(pos);
@@ -482,55 +508,56 @@ const slice =
  * The Chain type represents a composable chain of parser rules,
  * allowing for step-by-step construction of parsing logic with flexibility for handling results.
  */
-type Chain<E, T extends readonly unknown[]> = {
+type Chain<T extends readonly unknown[], E> = {
   /**
    * Adds a new parsing rule to the chain.
    * The result of the rule (R) is appended to the tuple T, maintaining a record of all accumulated results.
    * @param rule
    */
-  push<R>(rule: Rule<E, R>): Chain<E, readonly [...T, R]>;
+  push<R>(rule: Rule<R, E>): Chain<readonly [...T, R], E>;
 
   /**
    * Adds a parsing rule to the chain but ignores its result. The tuple T remains unchanged.
    * @param rule
    */
-  skip<R>(rule: Rule<E, R>): Chain<E, T>;
+  skip<R>(rule: Rule<R, E>): Chain<T, E>;
   /**
    * A final parser that combines all the rules in the chain and produces a result of type T.
    */
-  done: Rule<E, T>;
+  done: Rule<T, E>;
 };
 /**
  *
  */
-function chain<E>(): Chain<E, readonly []>;
+function chain<E>(): Chain<readonly [], E>;
 /**
  *
  * @param done
  */
-function chain<E, T extends readonly unknown[]>(done: Rule<E, T>): Chain<E, T>;
+function chain<E, T extends readonly unknown[]>(done: Rule<T, E>): Chain<T, E>;
 /**
  *
  * @param done
  * @returns returns a Chain
  */
 function chain<E>(
-  done: Rule<E, readonly unknown[]> = accept([]),
-): Chain<E, readonly unknown[]> {
+  done: Rule<readonly unknown[], E> = accept([]),
+): Chain<readonly unknown[], E> {
   return {
-    push: <R>(rule: Rule<E, R>): Chain<E, readonly [...unknown[], R]> =>
+    push: <R>(rule: Rule<R, E>): Chain<readonly [...unknown[], R], E> =>
       chain(
         $(done)(
           flatMap((init) => $(rule)(map((last) => [...init, last] as const)).$),
         ).$,
       ),
-    skip: <R>(rule: Rule<E, R>): Chain<E, readonly unknown[]> =>
+    skip: <R>(rule: Rule<R, E>): Chain<readonly unknown[], E> =>
       chain($(done)(flatMap((init) => $(rule)(as(init)).$)).$),
     done,
   };
 }
-const optional = <E, R>(rule: Rule<E, R>): Rule<E, R | undefined> =>
-  fork(rule, accept(undefined));
+
+const optional = <R, E>(rule: Rule<R, E>): Rule<R | undefined, E> =>
+  fork(rule, accept(undefined)<E>);
 
 const Rule = {
   optional,
@@ -553,5 +580,6 @@ const Rule = {
   unfinished,
   slice,
   log,
+  version,
 };
-export { Chain, Fork, ResultType, Rule };
+export { Chain, ElemOf, ResultOf, ResultsAsUnion, Rule };
