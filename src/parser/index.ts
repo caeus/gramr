@@ -1,11 +1,11 @@
 import { Rule } from 'gramr-ts/rule';
 
-type Parser<R, E> = Rule<R, E>;
+type Parser<R, E> = Rule<E, R>;
 
 const end = Rule.end;
 const enclose =
-  <E>(prefix: Rule<unknown, E>, suffix: Rule<unknown, E>) =>
-  <R>(rule: Rule<R, E>): Rule<R, E> =>
+  <E>(prefix: Rule<E, unknown>, suffix: Rule<E, unknown>) =>
+  <R>(rule: Rule<E, R>): Rule<E, R> =>
     Rule.first(
       Rule.chain<E>()
         //

@@ -1,43 +1,40 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 import { Lexer } from 'gramr-ts/lexer';
-import { $ } from 'gramr-ts/pipe';
 import { ResultOf, Rule, StepResult } from 'gramr-ts/rule';
 import { expect, test } from 'vitest';
 import { Parser } from '.';
 type BraceKind = 'paren' | 'curly' | 'square';
 const log =
   (id: string) =>
-  <R, E>(rule: Rule<R, E>): Rule<R, E> =>
-  (src) =>
-  (pos) => {
-    console.log(`Entered rule ${id}`);
-    const result = rule(src)(pos);
-    if (!result.accepted) console.log(`Rejected by rule ${id}`);
-    else console.log(`Accepted by rule ${id} until ${result.pos}`);
-    return result;
-  };
+  <R, E>(rule: Rule<E, R>): Rule<E, R> =>
+    Rule.of((src) => (pos) => {
+      console.log(`Entered rule ${id}`);
+      const result = rule.run(src)(pos);
+      if (!result.val.accepted) console.log(`Rejected by rule ${id}`);
+      else console.log(`Accepted by rule ${id} until ${result.val.pos}`);
+      return result;
+    });
 
 namespace tokenizer {
   const whitespaces = ` \t\n\r\v\f`;
-  const space = $(
-    Rule.nextIf<string>((s) => {
-      const trimmed = s.trim();
-      return trimmed == '' || trimmed == ',';
-    }),
-  )(Rule.as(undefined))(log('space')).$;
+  const space = Rule.nextIf<string>((s) => {
+    const trimmed = s.trim();
+    return trimmed == '' || trimmed == ',';
+  })
+    .let(Rule.as(undefined))
+    .let(log('space'));
   const keyword = <Type extends string>(
     type: Type,
     dispay: string = type,
-  ): Rule<{ type: Type }, string> =>
-    $(Lexer.exact(dispay))(Rule.as({ type })).$;
+  ): Rule<string, { type: Type }> => Lexer.exact(dispay).let(Rule.as({ type }));
 
   const braces = <Type extends string>(
     suffix: Type,
     open: string,
     close: string,
   ): [
-    Rule<{ type: `open_${Type}` }, string>,
-    Rule<{ type: `close_${Type}` }, string>,
+    Rule<string, { type: `open_${Type}` }>,
+    Rule<string, { type: `close_${Type}` }>,
   ] => [keyword(`open_${suffix}`, open), keyword(`close_${suffix}`, close)];
 
   const parens = braces('paren', '(', ')');
@@ -50,28 +47,27 @@ namespace tokenizer {
   const at = keyword('at', `@`);
   const tilde = keyword('tilde', `~`);
 
-  const text = $(
-    Rule.chain<string>()
-      .skip(Lexer.exact(`"`))
-      .push(
-        $(Rule.fork(Lexer.noneOf(`"`), $(Lexer.exact(`\\"`))(Rule.as(`"`)).$))(
-          Rule.collect(),
-        )(Rule.map((s) => s.join(''))).$,
-      )
-      .skip(Lexer.exact(`"`)).done,
-  )(Rule.first)(Rule.map((value) => ({ type: 'text' as const, value }))).$;
+  const text = Rule.chain<string>()
+    .skip(Lexer.exact(`"`))
+    .push(
+      Rule.fork(Lexer.noneOf(`"`), Lexer.exact(`\\"`).let(Rule.as(`"`)))
+        .let(Rule.collect())
+        .let(Rule.map((s) => s.join(''))),
+    )
+    .skip(Lexer.exact(`"`))
+    .done.let(Rule.first)
+    .let(Rule.map((value) => ({ type: 'text' as const, value })));
   const spliceunquote = keyword('spliceunquote', '~@');
-  const comment: Rule<readonly [], string> = log('comment')(
+  const comment: Rule<string, readonly []> = log('comment')(
     Rule.chain<string>()
       .skip(Lexer.exact(';'))
-      .skip($(Lexer.noneOf(`\n`))(Rule.loop()).$).done,
+      .skip(Lexer.noneOf(`\n`).let(Rule.loop())).done,
   );
-  const ignore = $(Rule.fork(comment, space))(log('ignore'))(Rule.loop()).$;
-  const identifier = $(Lexer.noneOf(`${whitespaces}[]{}(),'"\`;`))(
-    Rule.collect({ min: 1 }),
-  )(Rule.map((s) => s.join('')))(
-    Rule.map((value) => ({ type: 'identifier' as const, value })),
-  ).$;
+  const ignore = Rule.fork(comment, space).let(log('ignore')).let(Rule.loop());
+  const identifier = Lexer.noneOf(`${whitespaces}[]{}(),'"\`;`)
+    .let(Rule.collect({ min: 1 }))
+    .let(Rule.map((s) => s.join('')))
+    .let(Rule.map((value) => ({ type: 'identifier' as const, value })));
 
   const lexer = Lexer.create(
     [
@@ -91,12 +87,12 @@ namespace tokenizer {
   );
   export type Token = ResultOf<typeof lexer>[number];
   export function lex(str: string): Token[] {
-    const result = $(lexer)(Lexer.run(str)).$;
-    switch (result.accepted) {
+    const result = lexer.let(Lexer.feed(str));
+    switch (result.val.accepted) {
       case true:
-        return result.result;
+        return result.val.result;
       case false:
-        throw result.errors;
+        throw result.val.errors;
     }
   }
 }
@@ -126,70 +122,61 @@ type Token = tokenizer.Token;
 namespace parser {
   const delimiters = (
     suffix: BraceKind,
-  ): [Rule<unknown, Token>, Rule<unknown, Token>] => [
+  ): [Rule<Token, unknown>, Rule<Token, unknown>] => [
     Rule.nextIf((el: Token) => el.type == (`open_${suffix}` as const)),
     Rule.nextIf((el: Token) => el.type == (`close_${suffix}` as const)),
   ];
 
-  const grouped = <T>(brace: BraceKind, rule: Rule<T, Token>): Rule<T, Token> =>
+  const grouped = <T>(brace: BraceKind, rule: Rule<Token, T>): Rule<Token, T> =>
     Parser.enclose(...delimiters(brace))(rule);
-  const idexpr = $(
-    Rule.nextAs<Token, AST>((el: Token) => {
-      switch (el.type) {
-        case 'identifier':
-          return { accepted: true, value: el };
-        default:
-          return {
-            accepted: false,
-            msg: `Expected elem, got ${el.type} instead`,
-          };
-      }
-    }),
-  ).$;
-  const arrexpr: Rule<AST, Token> = Rule.lazy<Token, AST>(
-    () =>
-      $(grouped('square', $(expr)(Rule.collect()).$))(
-        Rule.map((items) => ({ type: 'arr', items }) satisfies AST),
-      ).$,
+  const idexpr = Rule.nextAs<Token, AST>((el: Token) => {
+    switch (el.type) {
+      case 'identifier':
+        return { accepted: true, value: el };
+      default:
+        return {
+          accepted: false,
+          msg: `Expected elem, got ${el.type} instead`,
+        };
+    }
+  });
+  const arrexpr: Rule<Token, AST> = Rule.lazy<Token, AST>(() =>
+    grouped('square', expr.let(Rule.collect())).let(
+      Rule.map((items) => ({ type: 'arr', items }) satisfies AST),
+    ),
   );
-  const dictexpr: Rule<AST, Token> = Rule.lazy(
-    () =>
-      $(
-        grouped(
-          'curly',
-          $(Rule.chain<Token>().push(expr).push(expr).done)(Rule.collect()).$,
-        ),
-      )(Rule.map((pairs) => ({ type: 'dict', pairs }) satisfies AST)).$,
-  );
-  const textexpr: Rule<AST, Token> = Rule.nextAs<Token, AST>(
+  const dictexpr: Rule<Token, AST> = Rule.lazy(() => {
+    return grouped(
+      'curly',
+      Rule.chain<Token>().push(expr).push(expr).done.let(Rule.collect()),
+    ).let(Rule.map((pairs) => ({ type: 'dict', pairs }) satisfies AST as AST));
+  });
+  const textexpr: Rule<Token, AST> = Rule.nextAs<Token, AST>(
     (el): StepResult<AST> =>
       el.type == 'text'
         ? { accepted: true, value: el }
         : { accepted: false, msg: `Expected text token, got ${el.type}` },
   );
-  const sexpr: Rule<AST, Token> = Rule.lazy<Token, AST>(
-    () =>
-      $(
-        grouped(
-          'paren',
-          Rule.chain<Token>().push(expr).push($(expr)(Rule.collect()).$).done,
-        ),
-      )(Rule.map(([fun, args]) => ({ type: 's', fun, args }) satisfies AST)).$,
+  const sexpr: Rule<Token, AST> = Rule.lazy<Token, AST>(() =>
+    grouped(
+      'paren',
+      Rule.chain<Token>().push(expr).push(expr.let(Rule.collect())).done,
+    ).let(Rule.map(([fun, args]) => ({ type: 's', fun, args }) satisfies AST)),
   );
   const expr = Rule.fork(idexpr, arrexpr, dictexpr, textexpr, sexpr);
-  export const parse = $(Rule.chain<Token>().push(expr).skip(Rule.end).done)(
-    Rule.first,
-  ).$;
+  export const parse = Rule.chain<Token>()
+    .push(expr)
+    .skip(Rule.end())
+    .done.let(Rule.first);
 }
 
 test('simple lisp parser', () => {
-  const s = $('(this {will need [to be] lexed} [] {})')(tokenizer.lex)(
-    (tokens) => parser.parse(tokens)(0),
-  ).$;
-  if (!s.accepted) {
+  const tokens = tokenizer.lex('(this {will need [to be] lexed} [] {})');
+  const s = parser.parse.run(tokens)(0);
+  if (!s.val.accepted) {
     throw new Error(`Didn't lex correctly`);
   }
-  const result = s.result;
+  const result = s.val.result;
   const expectation: AST = {
     type: 's',
     fun: { type: 'identifier', value: 'this' },

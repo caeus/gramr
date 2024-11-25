@@ -1,7 +1,6 @@
 import * as Result from 'gramr-ts/result';
 
 import fc from 'fast-check';
-import { $ } from 'gramr-ts/pipe';
 import { Rule } from 'gramr-ts/rule';
 import { expect, suite, test } from 'vitest';
 import { Lexer, LexRule } from '.';
@@ -11,122 +10,119 @@ const exact = Lexer.exact;
 // eslint-disable-next-line @typescript-eslint/no-namespace
 namespace rules {
   export const $null = Lexer.exact('null');
-  export const $bool = $(
-    Rule.fork(
-      //
-      $(Lexer.exact('false'))(Rule.as(false)).$,
-      //
-      $(exact('true'))(Rule.as(true)).$,
-    ),
-  )(Rule.path('bool')).$;
-  const digit = $(Lexer.anyOf('0123456789'))(Rule.as(undefined))(
-    Rule.path('digit'),
-  ).$;
+  export const $bool = Rule.fork(
+    //
+    Lexer.exact('false').let(Rule.as(false)),
+    //
+    exact('true').let(Rule.as(true)),
+  ).let(Rule.path('bool'));
+  const digit = Lexer.anyOf('0123456789')
+    .let(Rule.as(undefined))
+    .let(Rule.path('digit'));
 
-  const digits = $(digit)(Rule.loop({ min: 1 }))(Rule.path('digits')).$;
-  const sign = $(Rule.fork(exact('+'), exact('-')))(Lexer.optional)(
-    Rule.path('sign'),
-  ).$;
+  const digits = digit.let(Rule.loop({ min: 1 })).let(Rule.path('digits'));
+  const sign = Rule.fork(exact('+'), exact('-'))
+    .let(Lexer.optional)
+    .let(Rule.path('sign'));
 
-  const exponent: LexRule<undefined> = $(
+  const exponent: LexRule<undefined> = Rule.chain<string>()
+    .skip(Rule.fork(exact('e'), exact('E')))
+    .skip(sign)
+    .skip(digits)
+    .done.let(Rule.as(undefined))
+    .let(Rule.path('exponent'));
+  const fractional = Rule.chain<string>()
+    .skip(exact('.'))
+    .skip(digits)
+    .done.let(Rule.as(undefined))
+    .let(Rule.path('fractional'));
+  export const $integral = Rule.fork(
+    exact('0'),
     Rule.chain<string>()
-      .skip(Rule.fork(exact('e'), exact('E')))
-      .skip(sign)
-      .skip(digits).done,
-  )(Rule.as(undefined))(Rule.path('exponent')).$;
-  const fractional = $(Rule.chain<string>().skip(exact('.')).skip(digits).done)(
-    Rule.as(undefined),
-  )(Rule.path('fractional')).$;
-  export const $integral = $(
-    Rule.fork(
-      exact('0'),
-      Rule.chain<string>()
-        .skip(Lexer.anyOf('123456789'))
-        .skip($(digit)(Rule.loop()).$).done,
-    ),
-  )(Rule.path('integral')).$;
-  export const $number = $(
-    Rule.chain<string>()
-      .skip(sign)
-      .skip($integral)
-      .skip(Lexer.optional(fractional))
-      .skip(Lexer.optional(exponent)).done,
-  )(Rule.path('number')).$;
+      .skip(Lexer.anyOf('123456789'))
+      .skip(digit.let(Rule.loop())).done,
+  ).let(Rule.path('integral'));
+  export const $number = Rule.chain<string>()
+    .skip(sign)
+    .skip($integral)
+    .skip(Lexer.optional(fractional))
+    .skip(Lexer.optional(exponent))
+    .done.let(Rule.path('number'));
 
   const unicodeEscape = Rule.chain<string>()
     .skip(exact('u'))
     .skip(
       Rule.loop<string>({ min: 4, max: 4 })(
-        $(Lexer.anyOf('abcdefABCDEF0123456789'))(Rule.as(undefined)).$,
+        Lexer.anyOf('abcdefABCDEF0123456789').let(Rule.as(undefined)),
       ),
     ).done;
   const escape = Rule.chain<string>()
     .skip(exact(`\\`))
     .skip(Rule.fork(unicodeEscape, Lexer.anyOf(`"b\\/fnrt`))).done;
-  const $strChar = $(Lexer.noneOf(`"\\`))(Rule.as(undefined)).$;
-  export const $string = $(
-    Rule.chain<string>()
-      .skip($(Lexer.exact(`"`))(Rule.path('openquote')).$)
-      .skip(
-        $(Rule.fork($strChar, escape))(Rule.as(undefined))(
-          Rule.path('strchars'),
-        )(Rule.loop()).$,
-      )
-      .skip($(exact(`"`))(Rule.path('closequotes')).$).done,
-  )(Rule.path('string')).$;
+  const $strChar = Lexer.noneOf(`"\\`).let(Rule.as(undefined));
+  export const $string = Rule.chain<string>()
+    .skip(Lexer.exact(`"`).let(Rule.path('openquote')))
+    .skip(
+      Rule.fork($strChar, escape)
+        .let(Rule.as(undefined))
+        .let(Rule.path('strchars'))
+        .let(Rule.loop()),
+    )
+    .skip(exact(`"`).let(Rule.path('closequotes')))
+    .done.let(Rule.path('string'));
 
-  const space = $(Rule.nextIf<string>((el) => el.trim() == ''))(Rule.loop()).$;
+  const space = Rule.nextIf<string>((el) => el.trim() == '').let(Rule.loop());
 
-  export const $array = $(
-    Rule.lazy(
-      () =>
-        Rule.chain<string>()
-          .skip(exact(`[`))
-          .skip(
-            $(Rule.chain<string>().skip(space).skip($json).done)(
+  export const $array = Rule.lazy(
+    () =>
+      Rule.chain<string>()
+        .skip(exact(`[`))
+        .skip(
+          Rule.chain<string>()
+            .skip(space)
+            .skip($json)
+            .done.let(
               Rule.loop({
                 sep: Rule.chain<string>().skip(space).skip(exact(',')).done,
               }),
-            ).$,
-          )
-          .skip(space)
-          .skip(exact(`]`)).done,
-    ),
-  )(Rule.as(undefined)).$;
-  export const $object = $(
-    Rule.lazy(
-      () =>
-        Rule.chain<string>()
-          .skip(exact(`{`))
-          .skip(
-            $(
-              Rule.chain<string>()
-                .skip(space)
-                .skip($string)
-                .skip(space)
-                .skip(exact(':'))
-                .skip(space)
-                .skip($json).done,
-            )(
+            ),
+        )
+        .skip(space)
+        .skip(exact(`]`)).done,
+  ).let(Rule.as(undefined));
+  export const $object = Rule.lazy(
+    () =>
+      Rule.chain<string>()
+        .skip(exact(`{`))
+        .skip(
+          Rule.chain<string>()
+            .skip(space)
+            .skip($string)
+            .skip(space)
+            .skip(exact(':'))
+            .skip(space)
+            .skip($json)
+            .done.let(
               Rule.loop({
                 sep: Rule.as(undefined)(
                   Rule.chain<string>().skip(space).skip(exact(',')).done,
                 ),
               }),
-            ).$,
-          )
-          .skip(space)
-          .skip(exact(`}`)).done,
-    ),
-  )(Rule.as(undefined)).$;
-  export const $json: Rule<undefined, string> = $(
-    Rule.lazy(() => Rule.fork($null, $bool, $number, $string, $array, $object)),
-  )(Rule.as(undefined)).$;
+            ),
+        )
+        .skip(space)
+        .skip(exact(`}`)).done,
+  ).let(Rule.as(undefined));
+  export const $json: Rule<string, undefined> = Rule.lazy(() =>
+    Rule.fork($null, $bool, $number, $string, $array, $object),
+  ).let(Rule.as(undefined));
 
-  export const json = $(
-    Rule.chain<string>().skip(space).skip($json).skip(space).skip(Rule.end)
-      .done,
-  )(Rule.as(undefined)).$;
+  export const json = Rule.chain<string>()
+    .skip(space)
+    .skip($json)
+    .skip(space)
+    .skip(Rule.end())
+    .done.let(Rule.as(undefined));
 }
 
 const {
@@ -172,17 +168,21 @@ test('numbers', () => {
     fc.property(
       numArb,
       loggingIfError((x: number) => {
-        $(rules.$number)(Lexer.run(JSON.stringify(x)))(
-          loggingIfError((s: Result.RuleResult<unknown>) =>
-            expect(s.accepted).toBe(true),
-          ),
-        );
+        rules.$number
+          .let(Lexer.feed(JSON.stringify(x)))
+          .let(
+            loggingIfError((s: Result.RuleResult<unknown>) =>
+              expect(s.val.accepted).toBe(true),
+            ),
+          );
       }),
     ),
   );
 });
 test('null', () => {
-  $(rules.$null)(Lexer.run('null'))((s) => expect(s.accepted).toBe(true));
+  rules.$null
+    .let(Lexer.feed('null'))
+    .let((s) => expect(s.val.accepted).toBe(true));
 });
 
 test('done', () => {
@@ -257,19 +257,21 @@ test('done', () => {
     2,
   );
 
-  $(rules.$json)(Lexer.run(sample))((s) => expect(s.accepted).toBe(true));
+  rules.$json
+    .let(Lexer.feed(sample))
+    .let((s) => expect(s.val.accepted).toBe(true));
 });
 test('string', () => {
   fc.assert(
     fc.property(strArb, (str) => {
-      $(rules.$string)(Lexer.run(JSON.stringify(str)))((s) =>
-        expect(s.accepted).toBe(true),
-      );
+      rules.$string
+        .let(Lexer.feed(JSON.stringify(str)))
+        .let((s) => expect(s.val.accepted).toBe(true));
     }),
   );
 });
 test('string case', () => {
-  $(rules.$string)(Lexer.run(JSON.stringify('zcag<20WJm')));
+  rules.$string.let(Lexer.feed(JSON.stringify('zcag<20WJm')));
 });
 
 suite('json', () => {
@@ -278,11 +280,13 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(Lexer.run(JSON.stringify(x)))(
-            loggingIfError((s: Result.RuleResult<undefined>) =>
-              expect(s.accepted).toBe(true),
-            ),
-          );
+          rules.json
+            .let(Lexer.feed(JSON.stringify(x)))
+            .let(
+              loggingIfError((s: Result.RuleResult<undefined>) =>
+                expect(s.val.accepted).toBe(true),
+              ),
+            );
         }),
       ),
     );
@@ -293,11 +297,13 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(Lexer.run(JSON.stringify(x, null, 2)))(
-            loggingIfError((s: Result.RuleResult<undefined>) =>
-              expect(s.accepted).toBe(true),
-            ),
-          );
+          rules.json
+            .let(Lexer.feed(JSON.stringify(x, null, 2)))
+            .let(
+              loggingIfError((s: Result.RuleResult<undefined>) =>
+                expect(s.val.accepted).toBe(true),
+              ),
+            );
         }),
       ),
     );
@@ -307,11 +313,13 @@ suite('json', () => {
       fc.property(
         jsonArb,
         loggingIfError((x: unknown) => {
-          $(rules.json)(Lexer.run(JSON.stringify(x, null, 2) + '^'))(
-            loggingIfError((s: Result.RuleResult<undefined>) =>
-              expect(s.accepted).toBe(false),
-            ),
-          );
+          rules.json
+            .let(Lexer.feed(JSON.stringify(x, null, 2) + '^'))
+            .let(
+              loggingIfError((s: Result.RuleResult<undefined>) =>
+                expect(s.val.accepted).toBe(false),
+              ),
+            );
         }),
       ),
     );
