@@ -1,16 +1,13 @@
+import { Cont } from 'gramr-ts/cont';
 import { Context } from 'gramr-ts/context';
 import { Recursive } from 'gramr-ts/recursive';
-import { RuleResult } from 'gramr-ts/result';
+import { Result } from 'gramr-ts/result';
 
 type Rule<in E, out R> = {
-  readonly run: (src: readonly E[]) => (pos: number) => RuleResult<R>;
-  readonly let: <T>(cont: (value: Rule<E, R>) => T) => T;
+  readonly run: (src: readonly E[]) => (pos: number) => Result<R>;
+  let<T>(cont: (value: Rule<E, R>) => T): T;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type Rule1<out R, in E = unknown> = (
-  src: readonly E[],
-) => (pos: number) => RuleResult<R>;
 /**
  * The unfinished function wraps an existing rule and ensures that it only operates on valid cursor positions within the input source.
  * If the cursor is out of range, the wrapped rule immediately fails with a rejection message.
@@ -21,22 +18,18 @@ type Rule1<out R, in E = unknown> = (
 const unfinished = <R, E>(rule: Rule<E, R>): Rule<E, R> =>
   of(
     (src: readonly E[]) =>
-      (pos: number): RuleResult<R> =>
+      (pos: number): Result<R> =>
         pos >= 0 && pos < src.length
           ? rule.run(src)(pos)
-          : RuleResult.reject(
+          : Result.reject(
               `Cursor out of range (input size: ${src.length}, position: ${pos})`,
             )(pos),
   );
 
-const of = <E, R>(run: Rule<E, R>['run']): Rule<E, R> => {
-  const rule: Rule<E, R> = {
+const of = <E, R>(run: Rule<E, R>['run']): Rule<E, R> =>
+  Cont({
     run,
-    let: <T>(cont: (self: Rule<E, R>) => T) => cont(rule),
-  };
-  return rule;
-};
-
+  });
 /**
  * The flatMap function is a combinator that allows chaining of parsing rules.
  * It transforms the result of one rule (rule0) and feeds it into a function (next) that produces another rule.
@@ -50,35 +43,35 @@ const flatMap =
   <R0, R1, E>(next: (value: R0) => Rule<E, R1>) =>
   (rule0: Rule<E, R0>): Rule<E, R1> =>
     of((src) => (pos) => {
-      const result0 = rule0.run(src)(pos).val;
+      const result0 = rule0.run(src)(pos);
       switch (result0.accepted) {
         case false:
-          return RuleResult.of(result0);
+          return Result.of(result0);
         case true:
           return next(result0.result).run(src)(result0.pos);
       }
     });
 
 function bestOf<T0, T1>(
-  result0: RuleResult<T0>,
-  result1: RuleResult<T1>,
-): RuleResult<T0 | T1> {
-  switch (result0.val.accepted) {
+  result0: Result<T0>,
+  result1: Result<T1>,
+): Result<T0 | T1> {
+  switch (result0.accepted) {
     case true:
-      switch (result1.val.accepted) {
+      switch (result1.accepted) {
         case true:
-          return result0.val.pos >= result1.val.pos ? result0 : result1;
+          return result0.pos >= result1.pos ? result0 : result1;
         default:
           return result0;
       }
     default:
-      switch (result1.val.accepted) {
+      switch (result1.accepted) {
         case true:
           return result1;
         case false:
-          return RuleResult.of({
+          return Result.of({
             accepted: false,
-            errors: [...result0.val.errors, ...result1.val.errors],
+            errors: [...result0.errors, ...result1.errors],
           });
       }
   }
@@ -130,7 +123,7 @@ const fork = <
 ): Rule<ElemOf<H>, ResultsAsUnion<[H, ...T]>> => {
   return of(
     (src: readonly ElemOf<H>[]) =>
-      (pos): RuleResult<ResultsAsUnion<[H, ...T]>> => {
+      (pos): Result<ResultsAsUnion<[H, ...T]>> => {
         const rules: Rule<ElemOf<H>, unknown>[] = [
           head as unknown as Rule<ElemOf<H>, unknown>,
           ...tail,
@@ -139,7 +132,7 @@ const fork = <
         const bestresult0 = results.reduce((greediest, current) =>
           bestOf(greediest, current),
         );
-        return bestresult0 as RuleResult<ResultsAsUnion<[H, ...T]>>;
+        return bestresult0 as Result<ResultsAsUnion<[H, ...T]>>;
       },
   );
 };
@@ -153,7 +146,7 @@ const fork = <
  */
 const lazy = <E, R>(rule: () => Rule<E, R>): Rule<E, R> => {
   let memo: Rule<E, R>['run'] | null = null;
-  return of((src) => (pos): RuleResult<R> => {
+  return of((src) => (pos): Result<R> => {
     if (memo == null) {
       memo = rule().run;
     }
@@ -184,8 +177,8 @@ const accept = <E, R = unknown>(value: R): Rule<E, R> =>
   of(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (src: readonly E[]) =>
-      (pos: number): RuleResult<R> =>
-        RuleResult.accept(value)(pos),
+      (pos: number): Result<R> =>
+        Result.accept(value)(pos),
   );
 
 /**
@@ -203,14 +196,14 @@ const log = <E, R>(rule: Rule<E, R>): Rule<E, R> =>
     console.log('Will attempt', 'Pos:', pos, 'Path:', Context.getPath());
     try {
       const result = rule.run(src)(pos);
-      switch (result.val.accepted) {
+      switch (result.accepted) {
         case true:
           console.log(
             'Matched',
             'Path:',
             Context.getPath(),
             'Pos:',
-            result.val.pos,
+            result.pos,
           );
           break;
         case false:
@@ -234,8 +227,8 @@ const reject =
   (msg: string) =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   <E, T>(_src: E[]) =>
-  (pos: number): RuleResult<T> =>
-    RuleResult.of({
+  (pos: number): Result<T> =>
+    Result.of({
       accepted: false,
       errors: [
         {
@@ -263,10 +256,10 @@ const first = <F, E>(rule: Rule<E, readonly [F, ...unknown[]]>): Rule<E, F> =>
 const end = <E>(): Rule<E, undefined> =>
   of(
     (src: readonly E[]) =>
-      (pos: number): RuleResult<undefined> =>
+      (pos: number): Result<undefined> =>
         pos == src.length
-          ? RuleResult.accept(undefined)(pos)
-          : RuleResult.reject(`Expected EOI, got ${src[pos]} instead`)(pos),
+          ? Result.accept(undefined)(pos)
+          : Result.reject(`Expected EOI, got ${src[pos]} instead`)(pos),
   );
 /**
  * The map function transforms the output of an existing parser.
@@ -277,7 +270,7 @@ const end = <E>(): Rule<E, undefined> =>
 const map =
   <I, O>(fn: (i: I) => O) =>
   <E>(rule: Rule<E, I>): Rule<E, O> =>
-    of((src) => (pos) => rule.run(src)(pos).let(RuleResult.map(fn)));
+    of((src) => (pos) => rule.run(src)(pos).let(Result.map(fn)));
 
 /**
  * The as function transforms the output of a rule into a fixed value, ignoring the actual result of the rule.
@@ -300,8 +293,8 @@ const nextIf = <E>(pred: (el: E) => boolean): Rule<E, E> =>
     of((src: readonly E[]) => (pos) => {
       const el = src[pos]!;
       if (pred(el)) {
-        return RuleResult.accept(el)(pos + 1);
-      } else return RuleResult.reject('Condition unmet')<E>(pos);
+        return Result.accept(el)(pos + 1);
+      } else return Result.reject('Condition unmet')<E>(pos);
     }),
   );
 
@@ -326,8 +319,8 @@ const nextAs = <E, R>(fn: (el: E) => StepResult<R>): Rule<E, R> =>
     of((src) => (pos) => {
       const result = fn(src[pos]!);
       if (result.accepted) {
-        return RuleResult.accept(result.value)(pos + 1);
-      } else return RuleResult.reject(result.msg)<R>(pos);
+        return Result.accept(result.value)(pos + 1);
+      } else return Result.reject(result.msg)<R>(pos);
     }),
   );
 /**
@@ -382,9 +375,9 @@ const repeat =
       use: Rule<S, E>,
       next: Rule<S, E>,
       result: R,
-    ): Recursive<RuleResult<R>> => {
+    ): Recursive<Result<R>> => {
       if (count < min) {
-        const result0 = use.run(src)(pos).val;
+        const result0 = use.run(src)(pos);
 
         switch (result0.accepted) {
           case true:
@@ -402,16 +395,16 @@ const repeat =
           case false:
             return {
               done: true,
-              result: RuleResult.of(result0),
+              result: Result.of(result0),
             };
         }
       } else if (count == max) {
         return {
           done: true,
-          result: RuleResult.accept(result)(pos),
+          result: Result.accept(result)(pos),
         };
       } else {
-        const result0 = use.run(src)(pos).val;
+        const result0 = use.run(src)(pos);
         switch (result0.accepted) {
           case true:
             return Recursive.next(() =>
@@ -426,7 +419,7 @@ const repeat =
             );
           case false:
             return Recursive.done(
-              RuleResult.of({
+              Result.of({
                 accepted: true,
                 result,
                 pos,
@@ -489,12 +482,12 @@ const collect =
  */
 const nonEmpty = <E, T>(rule: Rule<E, T>): Rule<E, T> =>
   of((src) => (pos) => {
-    const result = rule.run(src)(pos).val;
+    const result = rule.run(src)(pos);
     if (result.accepted && result.pos <= pos) {
-      return RuleResult.reject(
+      return Result.reject(
         `The rule succeeded but failed to consume any input`,
       )<T>(pos);
-    } else return RuleResult.of(result);
+    } else return Result.of(result);
   });
 /**
  * The slice function takes a parsing rule and transforms it into a rule that returns the slice of the input string array corresponding to the region consumed by the original rule.
@@ -504,14 +497,14 @@ const nonEmpty = <E, T>(rule: Rule<E, T>): Rule<E, T> =>
  * @returns
  */
 const slice = <R>(rule: Rule<string, R>): Rule<string, string[]> =>
-  of((src) => (pos): RuleResult<string[]> => {
-    const result = rule.run(src)(pos).val;
+  of((src) => (pos): Result<string[]> => {
+    const result = rule.run(src)(pos);
     switch (result.accepted) {
       case false:
-        return RuleResult.of(result);
+        return Result.of(result);
       case true:
-        return RuleResult.of(result).let(
-          RuleResult.map(() => src.slice(pos, result.pos)),
+        return Result.of(result).let(
+          Result.map(() => src.slice(pos, result.pos)),
         );
     }
   });

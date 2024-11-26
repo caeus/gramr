@@ -6,12 +6,12 @@ suite('exact', () => {
   test('fails', () => {
     Lexer.exact('thisinput')
       .let(Lexer.feed('thatinput'))
-      .let((r) => expect(r.val.accepted).toBe(false));
+      .let((r) => expect(r.accepted).toBe(false));
   });
   test('succeeds', () => {
     Lexer.exact('thisinput')
       .let(Lexer.feed('thisinputandmore'))
-      .let((r) => expect(r.val.accepted).toBe(true));
+      .let((r) => expect(r.accepted).toBe(true));
   });
 });
 suite('chain', () => {
@@ -22,8 +22,8 @@ suite('chain', () => {
       .push(Lexer.exact('ef'))
       .done.let(Lexer.feed('abcdefgh'))
       .let((r) => {
-        expect(r.val.accepted).toBe(true);
-        if (r.val.accepted) expect(r.val.result.length).toEqual(3);
+        expect(r.accepted).toBe(true);
+        if (r.accepted) expect(r.result.length).toEqual(3);
       });
   });
   test('fails', () => {
@@ -32,7 +32,7 @@ suite('chain', () => {
       .skip(Lexer.exact('cd'))
       .skip(Lexer.exact('ef'))
       .done.let(Lexer.feed('abdefgh'))
-      .let((r) => expect(r.val.accepted).toBe(false));
+      .let((r) => expect(r.accepted).toBe(false));
   });
 });
 
@@ -45,10 +45,10 @@ suite('fork', () => {
     )
       .let(Lexer.feed('cd'))
       .let((r) => {
-        expect(r.val.accepted).toBe(true);
-        if (r.val.accepted) {
-          expect(r.val.result).toBe('hola');
-          expect(r.val.pos).toBe(2);
+        expect(r.accepted).toBe(true);
+        if (r.accepted) {
+          expect(r.result).toBe('hola');
+          expect(r.pos).toBe(2);
         }
       });
   });
@@ -59,14 +59,14 @@ suite('eoi', () => {
       .skip(Lexer.exact('asd'))
       .skip(Rule.end())
       .done.let(Lexer.feed('asd'))
-      .let((r) => expect(r.val.accepted).toBe(true));
+      .let((r) => expect(r.accepted).toBe(true));
   });
   test('fails', () => {
     Rule.chain<string>()
       .skip(Lexer.exact('asd'))
       .skip(Rule.end())
       .done.let(Lexer.feed('asdd'))
-      .let((r) => expect(r.val.accepted).toBe(false));
+      .let((r) => expect(r.accepted).toBe(false));
   });
 });
 suite('collect', () => {
@@ -86,9 +86,9 @@ suite('collect', () => {
         .let(Rule.collect({ sep: Lexer.exact('*') }))
         .let(Lexer.feed('aaaaa'))
         .let((r) => {
-          expect(r.val.accepted).toBe(true);
-          if (r.val.accepted) {
-            expect(r.val.result.length).toBe(1);
+          expect(r.accepted).toBe(true);
+          if (r.accepted) {
+            expect(r.result.length).toBe(1);
           }
         });
     });
@@ -97,9 +97,9 @@ suite('collect', () => {
         .let(Rule.collect({ sep: Lexer.exact('*') }))
         .let(Lexer.feed('a*a*a*a*a'))
         .let((r) => {
-          expect(r.val.accepted).toBe(true);
-          if (r.val.accepted) {
-            expect(r.val.result.length).toBe(5);
+          expect(r.accepted).toBe(true);
+          if (r.accepted) {
+            expect(r.result.length).toBe(5);
           }
         });
     });
@@ -110,9 +110,9 @@ suite('collect', () => {
         .let(Rule.collect())
         .let(Lexer.feed('aaaaaabb'))
         .let((r) => {
-          expect(r.val.accepted).toBe(true);
-          if (r.val.accepted) {
-            expect(r.val.result.length).toBe(6);
+          expect(r.accepted).toBe(true);
+          if (r.accepted) {
+            expect(r.result.length).toBe(6);
           }
         });
     });
@@ -123,9 +123,9 @@ suite('collect', () => {
         .let(Rule.collect({ min: 6 }))
         .let(Lexer.feed('aaaaaabb'))
         .let((r) => {
-          expect(r.val.accepted).toBe(true);
-          if (r.val.accepted) {
-            expect(r.val.result.length).toEqual(6);
+          expect(r.accepted).toBe(true);
+          if (r.accepted) {
+            expect(r.result.length).toEqual(6);
           }
         });
     });
@@ -134,7 +134,7 @@ suite('collect', () => {
         .let(Rule.collect({ min: 7 }))
         .let(Lexer.feed('aaaaaabb'))
         .let((r) => {
-          expect(r.val.accepted).toBe(false);
+          expect(r.accepted).toBe(false);
         });
     });
   });
@@ -145,9 +145,9 @@ suite('collect', () => {
           .let(Rule.collect({ max: 3 }))
           .let(Lexer.feed('aaaaaabb'))
           .let((r) => {
-            expect(r.val.accepted).toBe(true);
-            if (r.val.accepted) {
-              expect(r.val.result.length).toEqual(3);
+            expect(r.accepted).toBe(true);
+            if (r.accepted) {
+              expect(r.result.length).toEqual(3);
             }
           });
       });
@@ -158,9 +158,9 @@ suite('collect', () => {
           .let(Rule.collect({ max: 20 }))
           .let(Lexer.feed('aaaaaabb'))
           .let((r) => {
-            expect(r.val.accepted).toBe(true);
-            if (r.val.accepted) {
-              expect(r.val.result.length).toEqual(6);
+            expect(r.accepted).toBe(true);
+            if (r.accepted) {
+              expect(r.result.length).toEqual(6);
             }
           });
       });

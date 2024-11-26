@@ -1,5 +1,5 @@
 import { Recursive } from 'gramr-ts/recursive';
-import { RuleResult } from 'gramr-ts/result';
+import { Result } from 'gramr-ts/result';
 import { ResultOf, ResultsAsUnion, Rule } from 'gramr-ts/rule';
 export type LexRule<O> = Rule<string, O>;
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -30,9 +30,9 @@ const exact = (...str: [string, ...string[]]): Rule<string, undefined> => {
   const expected = str.flatMap((s) => split(s));
   return Rule.of((src) => (pos) => {
     if (isSubarrayEqual(src, expected, pos)) {
-      return RuleResult.accept(undefined)(pos + expected.length);
+      return Result.accept(undefined)(pos + expected.length);
     } else
-      return RuleResult.reject(
+      return Result.reject(
         `Expected ${expected.join('')} got ${src.slice(pos, pos + expected.length).join('')}`,
       )<undefined>(pos);
   });
@@ -50,7 +50,7 @@ const slice = (rule: Rule<string, unknown>): Rule<string, string> =>
  * @returns A rule that matches as many characters, as long as they pass predicated pred
  */
 const skipWhile = (pred: (el: string) => boolean): Rule<string, undefined> =>
-  Rule.of((src) => (pos): RuleResult<undefined> => {
+  Rule.of((src) => (pos): Result<undefined> => {
     const loop = (pos: number): Recursive<number> => {
       if (pos < src.length && pred(src[pos]!)) {
         return Recursive.next(() => loop(pos + 1));
@@ -58,7 +58,7 @@ const skipWhile = (pred: (el: string) => boolean): Rule<string, undefined> =>
         return Recursive.done(pos);
       }
     };
-    return RuleResult.accept(undefined)(Recursive.run(loop(pos)));
+    return Result.accept(undefined)(Recursive.run(loop(pos)));
   });
 /**
  *
@@ -92,7 +92,7 @@ const end: Rule<string, undefined> = Rule.end();
 
 const feed =
   (text: string) =>
-  <O>(rule: LexRule<O>): RuleResult<O> =>
+  <O>(rule: LexRule<O>): Result<O> =>
     rule.run(split(text))(0);
 
 /**

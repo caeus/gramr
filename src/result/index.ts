@@ -1,29 +1,24 @@
-type RuleError = { path: string[]; msg: string; pos: number };
+import { Cont, DeCont } from 'gramr-ts/cont';
 
-type RuleResult<Out> = {
-  val:
-    | {
-        accepted: false;
-        errors: RuleError[];
-      }
-    | {
-        accepted: true;
-        result: Out;
-        pos: number;
-      };
-  let: <R>(cont: (self: RuleResult<Out>) => R) => R;
+type Rejection = { path: string[]; msg: string; pos: number };
+type Accepted<R> = {
+  accepted: true;
+  result: R;
+  pos: number;
 };
-const of = <R>(val: RuleResult<R>['val']): RuleResult<R> => {
-  const result: RuleResult<R> = {
-    val,
-    let: <T>(cont: (self: RuleResult<R>) => T) => cont(result),
-  };
-  return result;
+type Rejected = {
+  accepted: false;
+  errors: Rejection[];
+};
+type Result<R> = Cont<Accepted<R> | Rejected>;
+const of = <R>(val: DeCont<Result<R>>): Result<R> => {
+  return Cont(val);
 };
 const map =
   <I, O>(fn: (i: I) => O) =>
-  (result: RuleResult<I>): RuleResult<O> => {
-    const value = result.val;
+  (result: Result<I>): Result<O> => {
+    const value = result;
+
     switch (value.accepted) {
       case false:
         return of(value);
@@ -34,7 +29,7 @@ const map =
 
 const accept =
   <R>(result: R) =>
-  (pos: number): RuleResult<R> =>
+  (pos: number): Result<R> =>
     of({
       accepted: true,
       result,
@@ -43,7 +38,7 @@ const accept =
 
 const reject =
   (msg: string) =>
-  <R>(pos: number): RuleResult<R> =>
+  <R>(pos: number): Result<R> =>
     of({
       accepted: false,
       errors: [
@@ -55,5 +50,5 @@ const reject =
       ],
     });
 
-const RuleResult = { accept, reject, map, of };
-export { RuleError, RuleResult };
+const Result = { accept, reject, map, of };
+export { Rejection, Result };

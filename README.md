@@ -29,18 +29,21 @@ Here’s how you can get started:
 ### 1. Tokenize a String
 
 ```typescript
-import { Lex } from 'gramr-ts/lex';
+import { Lexer } from 'gramr-ts/lexer';
 import { Rule } from 'gramr-ts/rule';
-import { $ } from 'gramr-ts/pipe'
 
 const tokenize = Lex.create(
   [
-    $(Lex.anyOf('0123456789'))(Rule.collect({ min: 1 }))(Lex.slice)(
+    Lexer.anyOf('0123456789')
+    .let(Rule.collect({ min: 1 }))
+    .let(Lexer
+    .slice)
+    .let(
       Rule.map((value) => ({ type: 'number', value })),
-    ).$,
-    $(Lex.exact('+'))(Rule.as({ type: 'plus' })).$,
+    ),
+    Lexer.exact('+').let(Rule.as({ type: 'plus' })),
   ],
-  Lex.isWhitespace,
+  Lexer.whitespace.let(Rule.loop()),
 );
 
 const tokens = tokenize('3 + 5');

@@ -4,16 +4,6 @@ import { ResultOf, Rule, StepResult } from 'gramr-ts/rule';
 import { expect, test } from 'vitest';
 import { Parser } from '.';
 type BraceKind = 'paren' | 'curly' | 'square';
-const log =
-  (id: string) =>
-  <R, E>(rule: Rule<E, R>): Rule<E, R> =>
-    Rule.of((src) => (pos) => {
-      console.log(`Entered rule ${id}`);
-      const result = rule.run(src)(pos);
-      if (!result.val.accepted) console.log(`Rejected by rule ${id}`);
-      else console.log(`Accepted by rule ${id} until ${result.val.pos}`);
-      return result;
-    });
 
 namespace tokenizer {
   const whitespaces = ` \t\n\r\v\f`;
@@ -22,7 +12,7 @@ namespace tokenizer {
     return trimmed == '' || trimmed == ',';
   })
     .let(Rule.as(undefined))
-    .let(log('space'));
+    .let(Rule.log);
   const keyword = <Type extends string>(
     type: Type,
     dispay: string = type,
@@ -58,12 +48,12 @@ namespace tokenizer {
     .done.let(Rule.first)
     .let(Rule.map((value) => ({ type: 'text' as const, value })));
   const spliceunquote = keyword('spliceunquote', '~@');
-  const comment: Rule<string, readonly []> = log('comment')(
-    Rule.chain<string>()
-      .skip(Lexer.exact(';'))
-      .skip(Lexer.noneOf(`\n`).let(Rule.loop())).done,
-  );
-  const ignore = Rule.fork(comment, space).let(log('ignore')).let(Rule.loop());
+  const comment: Rule<string, readonly []> = Rule.chain<string>()
+    .skip(Lexer.exact(';'))
+    .skip(Lexer.noneOf(`\n`).let(Rule.loop()))
+    .done.let(Rule.log);
+
+  const ignore = Rule.fork(comment, space).let(Rule.log).let(Rule.loop());
   const identifier = Lexer.noneOf(`${whitespaces}[]{}(),'"\`;`)
     .let(Rule.collect({ min: 1 }))
     .let(Rule.map((s) => s.join('')))
@@ -88,11 +78,11 @@ namespace tokenizer {
   export type Token = ResultOf<typeof lexer>[number];
   export function lex(str: string): Token[] {
     const result = lexer.let(Lexer.feed(str));
-    switch (result.val.accepted) {
+    switch (result.accepted) {
       case true:
-        return result.val.result;
+        return result.result;
       case false:
-        throw result.val.errors;
+        throw result.errors;
     }
   }
 }
@@ -173,10 +163,10 @@ namespace parser {
 test('simple lisp parser', () => {
   const tokens = tokenizer.lex('(this {will need [to be] lexed} [] {})');
   const s = parser.parse.run(tokens)(0);
-  if (!s.val.accepted) {
+  if (!s.accepted) {
     throw new Error(`Didn't lex correctly`);
   }
-  const result = s.val.result;
+  const result = s.result;
   const expectation: AST = {
     type: 's',
     fun: { type: 'identifier', value: 'this' },

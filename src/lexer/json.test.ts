@@ -171,8 +171,8 @@ test('numbers', () => {
         rules.$number
           .let(Lexer.feed(JSON.stringify(x)))
           .let(
-            loggingIfError((s: Result.RuleResult<unknown>) =>
-              expect(s.val.accepted).toBe(true),
+            loggingIfError((s: Result.Result<unknown>) =>
+              expect(s.accepted).toBe(true),
             ),
           );
       }),
@@ -180,9 +180,7 @@ test('numbers', () => {
   );
 });
 test('null', () => {
-  rules.$null
-    .let(Lexer.feed('null'))
-    .let((s) => expect(s.val.accepted).toBe(true));
+  rules.$null.let(Lexer.feed('null')).let((s) => expect(s.accepted).toBe(true));
 });
 
 test('done', () => {
@@ -257,16 +255,14 @@ test('done', () => {
     2,
   );
 
-  rules.$json
-    .let(Lexer.feed(sample))
-    .let((s) => expect(s.val.accepted).toBe(true));
+  rules.$json.let(Lexer.feed(sample)).let((s) => expect(s.accepted).toBe(true));
 });
 test('string', () => {
   fc.assert(
     fc.property(strArb, (str) => {
       rules.$string
         .let(Lexer.feed(JSON.stringify(str)))
-        .let((s) => expect(s.val.accepted).toBe(true));
+        .let((s) => expect(s.accepted).toBe(true));
     }),
   );
 });
@@ -283,8 +279,8 @@ suite('json', () => {
           rules.json
             .let(Lexer.feed(JSON.stringify(x)))
             .let(
-              loggingIfError((s: Result.RuleResult<undefined>) =>
-                expect(s.val.accepted).toBe(true),
+              loggingIfError((s: Result.Result<undefined>) =>
+                expect(s.accepted).toBe(true),
               ),
             );
         }),
@@ -300,8 +296,8 @@ suite('json', () => {
           rules.json
             .let(Lexer.feed(JSON.stringify(x, null, 2)))
             .let(
-              loggingIfError((s: Result.RuleResult<undefined>) =>
-                expect(s.val.accepted).toBe(true),
+              loggingIfError((s: Result.Result<undefined>) =>
+                expect(s.accepted).toBe(true),
               ),
             );
         }),
@@ -316,8 +312,8 @@ suite('json', () => {
           rules.json
             .let(Lexer.feed(JSON.stringify(x, null, 2) + '^'))
             .let(
-              loggingIfError((s: Result.RuleResult<undefined>) =>
-                expect(s.val.accepted).toBe(false),
+              loggingIfError((s: Result.Result<undefined>) =>
+                expect(s.accepted).toBe(false),
               ),
             );
         }),
