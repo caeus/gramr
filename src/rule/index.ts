@@ -248,7 +248,7 @@ const first = <F, E>(rule: Rule<E, readonly [F, ...unknown[]]>): Rule<E, F> =>
 /**
  * The end function is a parser combinator that checks if the current position corresponds to the end of the input.
  * It verifies that there are no more elements left to parse by comparing the current position (pos) with the length of the input array (src).
- * If the current position is at the end of the input, it successfully completes the parse and returns a RuleResult with undefined.
+ * If the current position is at the end of the input, it successfully completes the parse and returns a Result with undefined.
  * If there are still elements left to parse, it rejects the rule and provides an error message.
  * @param src
  * @returns
