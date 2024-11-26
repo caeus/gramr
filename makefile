@@ -10,9 +10,9 @@ format: install
 	npm run format
 
 docs: install lint
-	npm run docs
+	rm -rf docs && npm run docs
 
-build: clean install lint test
+build: clean install lint test docs
 	npm run build
 
 test: lint
