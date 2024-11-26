@@ -253,14 +253,13 @@ const first = <F, E>(rule: Rule<E, readonly [F, ...unknown[]]>): Rule<E, F> =>
  * @param src
  * @returns
  */
-const end = <E>(): Rule<E, undefined> =>
-  of(
-    (src: readonly E[]) =>
-      (pos: number): Result<undefined> =>
-        pos == src.length
-          ? Result.accept(undefined)(pos)
-          : Result.reject(`Expected EOI, got ${src[pos]} instead`)(pos),
-  );
+const end: Rule<unknown, undefined> = of(
+  (src: readonly unknown[]) =>
+    (pos: number): Result<undefined> =>
+      pos == src.length
+        ? Result.accept(undefined)(pos)
+        : Result.reject(`Expected EOI, got ${src[pos]} instead`)(pos),
+);
 /**
  * The map function transforms the output of an existing parser.
  * It takes a rule, applies it to input, and then modifies the parsed result using the provided transformation function (fn).

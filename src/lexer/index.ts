@@ -88,7 +88,7 @@ const optional = <E, R>(rule: Rule<E, R>): Rule<E, R | undefined> =>
 /**
  * Matches the end of the stream only
  */
-const end: Rule<string, undefined> = Rule.end();
+const end: Rule<string, undefined> = Rule.end;
 
 const feed =
   (text: string) =>

@@ -57,14 +57,14 @@ suite('eoi', () => {
   test('succeeds', () => {
     Rule.chain<string>()
       .skip(Lexer.exact('asd'))
-      .skip(Rule.end())
+      .skip(Rule.end)
       .done.let(Lexer.feed('asd'))
       .let((r) => expect(r.accepted).toBe(true));
   });
   test('fails', () => {
     Rule.chain<string>()
       .skip(Lexer.exact('asd'))
-      .skip(Rule.end())
+      .skip(Rule.end)
       .done.let(Lexer.feed('asdd'))
       .let((r) => expect(r.accepted).toBe(false));
   });

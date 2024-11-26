@@ -156,7 +156,7 @@ namespace parser {
   const expr = Rule.fork(idexpr, arrexpr, dictexpr, textexpr, sexpr);
   export const parse = Rule.chain<Token>()
     .push(expr)
-    .skip(Rule.end())
+    .skip(Rule.end)
     .done.let(Rule.first);
 }
 

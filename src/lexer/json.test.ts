@@ -121,7 +121,7 @@ namespace rules {
     .skip(space)
     .skip($json)
     .skip(space)
-    .skip(Rule.end())
+    .skip(Rule.end)
     .done.let(Rule.as(undefined));
 }
 
