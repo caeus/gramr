@@ -32,7 +32,7 @@ Here’s how you can get started:
 import { Lexer } from 'gramr-ts/lexer';
 import { Rule } from 'gramr-ts/rule';
 
-const tokenize = Lex.create(
+const tokenize = Lexer.create(
   [
     Lexer.anyOf('0123456789')
     .let(Rule.collect({ min: 1 }))
