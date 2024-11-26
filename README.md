@@ -49,3 +49,7 @@ const tokens = tokenize('3 + 5');
 // Output: [{ type: 'number', value: '3' }, { type: 'plus' }, { type: 'number', value: '5' }]
 console.log(tokens);
 ```
+
+## [Docs](https://caeus.github.io/gramr/)
+
+
