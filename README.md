@@ -36,8 +36,7 @@ const tokenize = Lex.create(
   [
     Lexer.anyOf('0123456789')
     .let(Rule.collect({ min: 1 }))
-    .let(Lexer
-    .slice)
+    .let(Lexer.slice)
     .let(
       Rule.map((value) => ({ type: 'number', value })),
     ),
