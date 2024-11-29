@@ -128,6 +128,7 @@ const create = <H, Rules extends readonly [...Rule<string, unknown>[]]>(
   return Rule.chain<string>()
     .skip(whitespace)
     .push(token.let(Rule.collect({ sep: whitespace })))
+    .skip(whitespace)
     .skip(end)
     .done.let(Rule.first);
 };
