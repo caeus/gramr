@@ -1,4 +1,4 @@
-import { Cont, DeCont } from 'gramr-ts/cont';
+import { DeSelfie, Selfie } from 'gramr-ts/cont';
 
 type Rejection = { path: string[]; msg: string; pos: number };
 type Accepted<R> = {
@@ -10,9 +10,9 @@ type Rejected = {
   accepted: false;
   errors: Rejection[];
 };
-type Result<R> = Cont<Accepted<R> | Rejected>;
-const of = <R>(val: DeCont<Result<R>>): Result<R> => {
-  return Cont(val);
+type Result<R> = Selfie<Accepted<R> | Rejected>;
+const of = <R>(val: DeSelfie<Result<R>>): Result<R> => {
+  return Selfie(val);
 };
 const map =
   <I, O>(fn: (i: I) => O) =>

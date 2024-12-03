@@ -1,4 +1,4 @@
-import { Cont } from 'gramr-ts/cont';
+import { Selfie } from 'gramr-ts/cont';
 import { Context } from 'gramr-ts/context';
 import { Recursive } from 'gramr-ts/recursive';
 import { Result } from 'gramr-ts/result';
@@ -27,7 +27,7 @@ const unfinished = <R, E>(rule: Rule<E, R>): Rule<E, R> =>
   );
 
 const of = <E, R>(run: Rule<E, R>['run']): Rule<E, R> =>
-  Cont({
+  Selfie({
     run,
   });
 /**

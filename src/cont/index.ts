@@ -1,13 +1,17 @@
-type Cont<T extends object> = T & {
-  let<R>(cont: (self: Cont<T>) => R): R;
-};
-const ContPrototype = {
-  let<R>(cont: (self: Cont<object>) => R): R {
-    return cont(this as unknown as Cont<object>);
+type Cont<out T extends object> = <R>(cont: (value: Selfie<T>) => R) => R;
+type Selfie<T extends Readonly<object>> = Readonly<
+  T & {
+    let: Cont<T>;
+  }
+>;
+const SelfiePrototype = {
+  let<R>(cont: (self: Selfie<object>) => R): R {
+    return cont(this as unknown as Selfie<object>);
   },
 };
-const Cont = <T extends object>(value: T): Cont<T> =>
-  Object.assign(Object.create(ContPrototype), value);
+const Selfie = <T extends object>(value: T): Selfie<T> =>
+  Object.assign(Object.create(SelfiePrototype), value);
 
-type DeCont<T extends Cont<object>> = T extends Cont<infer V> ? V : never;
-export { Cont, DeCont };
+type DeSelfie<T extends Selfie<object>> =
+  T extends Selfie<infer V extends object> ? V : never;
+export { Cont, DeSelfie, Selfie };
